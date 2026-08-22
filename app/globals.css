@@ -45,3 +45,41 @@
 .length-requirement{margin:10px 0 0;color:#4f5253;font-size:11px;line-height:1.45}.length-requirement strong{color:#1f2122;font-size:12px}
 
 @media(max-width:900px){.panel-heading{font-size:15px}.section-title h3{font-size:14px}.section-title p{font-size:11px}.drawing-toolbar h2{font-size:18px}.drawing-context{font-size:10px}.drawing-caption{font-size:10px}}
+
+/* Blank-first workflow: equipment → measured log → real product sizes. */
+.section-title.with-state{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.section-title.with-state>div{min-width:0}
+.ready-mark{flex:none;padding:4px 7px;border:1px solid #aeb1b2;border-radius:999px;background:#f4f4f2;color:#424546;font-size:8px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.primary-add-button,.secondary-add-button,.add-product-button{width:100%;min-height:46px;padding:11px 14px;border-radius:7px;font-size:12px;font-weight:800}
+.primary-add-button{border:1px solid #202223;background:#202223;color:#fff}
+.secondary-add-button{border:1px solid #8f9293;background:#fff;color:#202223}
+.products-empty{padding:14px;border:1px dashed #aeb1b2;border-radius:8px;background:#f7f7f5}
+.products-empty p{margin:0 0 12px;color:#555859;font-size:11px;line-height:1.5}
+.log-editor{padding:13px;border:1px solid #bfc2c3;border-radius:8px;background:#f7f7f5}
+.log-editor .field-grid{margin-top:0}
+.field-help{margin:9px 0 0;color:#5b5e5f;font-size:10px;line-height:1.45}
+.text-remove-button{margin-top:10px;padding:0;border:0;background:transparent;color:#555859;font-size:10px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.order-length-panel{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;padding:12px;border:1px solid #bfc2c3;border-radius:8px;background:#ececea}
+.order-length-panel p,.order-length-panel strong{grid-column:1/-1;margin:0;font-size:10px;line-height:1.45}
+.order-length-panel p{color:#5a5d5e}
+.order-length-panel strong{color:#202223}
+.product-editor{margin-top:9px;padding:13px;border:1px solid #c5c7c8;border-radius:8px;background:#fff}
+.product-card-heading>strong{font-size:12px}
+.product-card-heading>button{padding:5px 7px;border:0;background:transparent;color:#626566;font-size:9px;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.allowance-details{margin-top:12px;padding-top:10px;border-top:1px solid #dedfdf}
+.allowance-details summary{cursor:pointer;color:#3f4243;font-size:10px;font-weight:800}
+.allowance-details>p{margin:7px 0 0;color:#66696a;font-size:9px;line-height:1.4}
+.add-product-button{margin-top:9px;border:1px dashed #8f9293;background:#f7f7f5;color:#202223}
+.drawing-empty.error>span{background:#202223;color:#fff}
+.equipment-modal .modal-heading p{max-width:390px;margin:7px 0 0;color:#626566;font-size:10px;line-height:1.45}
+.optional-name{padding-top:15px;border-top:1px solid #dedfdf}
+.calculate-button:disabled{cursor:not-allowed;opacity:.38;box-shadow:none}
+input::placeholder{color:#a0a3a4;font-weight:500}
+
+@media(max-width:900px){
+  .primary-add-button,.secondary-add-button,.add-product-button{min-height:50px;font-size:13px}
+  .order-length-panel{grid-template-columns:1fr}
+  .order-length-panel p,.order-length-panel strong{grid-column:1}
+  .equipment-modal{max-height:calc(100vh - 24px);overflow:auto;padding:19px}
+  .modal-heading h2{font-size:21px}
+}

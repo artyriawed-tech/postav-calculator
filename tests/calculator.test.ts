@@ -24,6 +24,34 @@ test("готовая длина 3650 мм считается с производ
   assert.ok(Math.abs(variant.nominalVolume / variant.logVolume * 100 - variant.nominalRecovery) < 1e-12);
 });
 
+test("фактическая длина бревна участвует в объёме сырья", () => {
+  const result = calculate({
+    diameter: 320,
+    length: 3600,
+    logLength: 3800,
+    lengthAllowance: 25,
+    products: DEFAULT_PRODUCTS,
+    equipment: DEFAULT_EQUIPMENT[0],
+    topN: 1,
+  });
+  assert.equal(result.status, "ok");
+  const expectedLogVolume = Math.PI * Math.pow(320 / 2000, 2) * 3.8;
+  assert.ok(Math.abs(result.variants[0].logVolume - expectedLogVolume) < 1e-12);
+});
+
+test("расчёт блокируется, если бревно короче продукции с припуском", () => {
+  const result = calculate({
+    diameter: 320,
+    length: 3650,
+    logLength: 3670,
+    lengthAllowance: 40,
+    products: DEFAULT_PRODUCTS,
+    equipment: DEFAULT_EQUIPMENT[0],
+  });
+  assert.equal(result.status, "invalid");
+  assert.match(result.error || "", /не короче 3690/);
+});
+
 test("эталонная схема проходит при Ø311, но не является допустимой при Ø310", () => {
   const at311 = calculate({ diameter: 311, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   const at310 = calculate({ diameter: 310, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });

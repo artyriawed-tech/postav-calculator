@@ -263,12 +263,14 @@ function candidateOffsets(defects: Defect[], pieces: Piece[], radius: number) {
   return xs.flatMap((x) => ys.map((y) => ({ x, y }))).sort((a, b) => Math.abs(a.x) + Math.abs(a.y) - Math.abs(b.x) - Math.abs(b.y));
 }
 
-export function calculate(input: { diameter: number; length: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number }): Calculation {
+export function calculate(input: { diameter: number; length: number; logLength?: number; lengthAllowance?: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number }): Calculation {
   const { diameter, length, equipment } = input;
   const products = input.products.filter((product) => product.enabled);
   const radius = diameter / 2;
   if (!Number.isFinite(diameter) || diameter <= 0 || !Number.isFinite(length) || length <= 0) return { status: "invalid", variants: [], error: "Проверьте диаметр и готовую длину досок." };
   if (diameter > equipment.maxDiameter) return { status: "invalid", variants: [], error: `Диаметр ${diameter} мм превышает просвет «${equipment.name}» (${equipment.maxDiameter} мм).` };
+  if (!Number.isInteger(equipment.maxSaws) || equipment.maxSaws <= 0) return { status: "invalid", variants: [], error: "Количество пил должно быть целым числом больше нуля." };
+  if (!Number.isFinite(equipment.maxDiameter) || equipment.maxDiameter <= 0) return { status: "invalid", variants: [], error: "Максимальный просвет оборудования должен быть больше нуля." };
   if (!products.length) return { status: "invalid", variants: [], error: "Включите хотя бы один размер доски." };
   for (const product of products) {
     const values = [product.nominalThickness, product.nominalWidth, product.cuttingThickness, product.cuttingWidth];
@@ -282,9 +284,16 @@ export function calculate(input: { diameter: number; length: number; products: P
 
   const heights = [...new Set(products.map((product) => product.cuttingWidth))].filter((height) => height <= diameter);
   const variants: Variant[] = [];
-  // `length` — готовая длина продукции. На исходном чертеже к ней задан припуск +40 мм.
-  const cuttingLength = length + 40;
-  const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (cuttingLength / 1000);
+  // `length` — готовая длина продукции. Припуск и фактическая длина бревна
+  // передаются отдельно; значения по умолчанию сохраняют совместимость со
+  // старым эталонным чертежом (+40 мм).
+  const lengthAllowance = input.lengthAllowance ?? 40;
+  const cuttingLength = length + lengthAllowance;
+  const logLength = input.logLength ?? cuttingLength;
+  if (!Number.isFinite(lengthAllowance) || lengthAllowance < 0) return { status: "invalid", variants: [], error: "Припуск по длине не может быть отрицательным." };
+  if (!Number.isFinite(logLength) || logLength <= 0) return { status: "invalid", variants: [], error: "Проверьте фактическую длину бревна." };
+  if (cuttingLength > logLength + EPSILON) return { status: "invalid", variants: [], error: `Для готовой длины ${length} мм и припуска ${lengthAllowance} мм нужно бревно не короче ${cuttingLength} мм.` };
+  const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (logLength / 1000);
 
   for (const cantHeight of heights) {
     const rows = generateRows(products, equipment.kerf, radius, cantHeight);

@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
-  DEFAULT_EQUIPMENT,
-  DEFAULT_PRODUCTS,
   type Calculation,
   type Defect,
   type Equipment,
@@ -35,11 +33,13 @@ function NumberField({
   value,
   onChange,
   step = 1,
+  required = false,
 }: {
   label: string;
-  value: number;
-  onChange: (value: number) => void;
+  value: number | null;
+  onChange: (value: number | null) => void;
   step?: number;
+  required?: boolean;
 }) {
   return (
     <label>
@@ -47,8 +47,13 @@ function NumberField({
       <input
         type="number"
         step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        min="0"
+        required={required}
+        value={value ?? ""}
+        placeholder="Введите"
+        onChange={(event) =>
+          onChange(event.target.value === "" ? null : Number(event.target.value))
+        }
       />
     </label>
   );
@@ -419,24 +424,27 @@ function TechnicalDrawing({
 }
 
 export function CalculatorApp() {
-  const [diameter, setDiameter] = useState(320);
-  const [length, setLength] = useState(3650);
-  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
+  const [diameter, setDiameter] = useState<number | null>(null);
+  const [logLength, setLogLength] = useState<number | null>(null);
+  const [logAdded, setLogAdded] = useState(false);
+  const [finishedLength, setFinishedLength] = useState<number | null>(null);
+  const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
   const [equipmentId, setEquipmentId] = useState("");
+  const [equipmentDraft, setEquipmentDraft] = useState<Equipment | null>(null);
+  const [equipmentDraftMode, setEquipmentDraftMode] = useState<"create" | "edit" | null>(null);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("final");
   const [zoom, setZoom] = useState(1);
-  const [editingEquipment, setEditingEquipment] = useState(false);
   const [inputsOpen, setInputsOpen] = useState(true);
   const [equipmentLoaded, setEquipmentLoaded] = useState(false);
-  const [saveState, setSaveState] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const svgRef = useRef<SVGSVGElement>(null);
+
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("postav-equipment-v2");
+      const saved = localStorage.getItem("postav-equipment-v3");
       if (saved) {
         const items: Equipment[] = JSON.parse(saved);
         setEquipmentList(items);
@@ -448,26 +456,63 @@ export function CalculatorApp() {
       setEquipmentLoaded(true);
     }
   }, []);
+
   useEffect(() => {
-    if (equipmentLoaded)
-      localStorage.setItem(
-        "postav-equipment-v2",
-        JSON.stringify(equipmentList),
-      );
+    if (equipmentLoaded) {
+      localStorage.setItem("postav-equipment-v3", JSON.stringify(equipmentList));
+    }
   }, [equipmentList, equipmentLoaded]);
+
   const equipment = equipmentList.find((item) => item.id === equipmentId);
+  const positive = (value: number | null | undefined) =>
+    typeof value === "number" && Number.isFinite(value) && value > 0;
+  const equipmentReady =
+    !!equipment && Number.isInteger(equipment.maxSaws) && positive(equipment.maxSaws) && positive(equipment.kerf) && positive(equipment.maxDiameter);
+  const logReady = logAdded && positive(diameter) && positive(logLength);
+  const productsReady =
+    products.length > 0 &&
+    products.every(
+      (product) =>
+        positive(product.nominalThickness) &&
+        positive(product.nominalWidth) &&
+        product.cuttingThickness >= product.nominalThickness &&
+        product.cuttingWidth >= product.nominalWidth,
+    );
+  const orderReady = positive(finishedLength) && (lengthAllowance === null || lengthAllowance >= 0);
+  const readyToCalculate = equipmentReady && logReady && productsReady && orderReady;
+
+  const missingMessage = !equipment
+    ? "Добавьте оборудование, на котором будет выполняться распил."
+    : !logAdded
+      ? "Добавьте и измерьте конкретное бревно."
+      : !logReady
+        ? "Введите диаметр тонкого торца и фактическую длину бревна."
+        : products.length === 0
+          ? "Добавьте размеры продукции, которую нужно получить."
+          : !productsReady
+            ? "Заполните толщину и ширину каждого размера продукции."
+            : !orderReady
+              ? "Введите готовую длину продукции."
+              : "";
+
   const result: Calculation = useMemo(
     () =>
-      equipment
-        ? calculate({ diameter, length, products, equipment, defects, topN: 1 })
-        : {
-            status: "invalid",
-            variants: [],
-            error: "Сначала добавьте оборудование для этого расчёта.",
-          },
-    [diameter, length, products, equipment, defects],
+      readyToCalculate && equipment
+        ? calculate({
+            diameter: diameter!,
+            length: finishedLength!,
+            logLength: logLength!,
+            lengthAllowance: lengthAllowance ?? 0,
+            products,
+            equipment,
+            defects,
+            topN: 1,
+          })
+        : { status: "invalid", variants: [], error: missingMessage },
+    [readyToCalculate, equipment, diameter, finishedLength, logLength, lengthAllowance, products, defects, missingMessage],
   );
   const variant = result.variants[0];
+
   const sawCoordinates = useMemo(() => {
     if (!variant || !equipment) return [];
     const row = variant.pieces
@@ -476,75 +521,137 @@ export function CalculatorApp() {
     if (!row.length) return [];
     return [
       row[0].x - equipment.kerf / 2,
-      ...row
-        .slice(0, -1)
-        .map((piece, index) => (piece.x + piece.width + row[index + 1].x) / 2),
+      ...row.slice(0, -1).map(
+        (piece, index) => (piece.x + piece.width + row[index + 1].x) / 2,
+      ),
       row.at(-1)!.x + row.at(-1)!.width + equipment.kerf / 2,
     ];
   }, [variant, equipment]);
-  const updateProduct = (id: string, patch: Partial<Product>) =>
-    setProducts((items) =>
-      items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
-    );
-  const updateEquipment = (patch: Partial<Equipment>) =>
-    equipment &&
-    setEquipmentList((items) =>
-      items.map((item) =>
-        item.id === equipment.id ? { ...item, ...patch } : item,
-      ),
-    );
-  const persistEquipment = (items: Equipment[]) =>
-    localStorage.setItem("postav-equipment-v2", JSON.stringify(items));
-  const saveEquipment = () => {
-    persistEquipment(equipmentList);
-    setEditingEquipment(false);
-  };
+
   const addEquipment = () => {
-    const item: Equipment = {
-      ...DEFAULT_EQUIPMENT[0],
+    setEquipmentDraft({
       id: `equipment-${Date.now()}`,
-      name: "Новое оборудование",
+      name: "",
+      maxSaws: 0,
+      kerf: 0,
+      maxDiameter: 0,
+      secondaryEdging: false,
+      multipleFeeds: false,
+    });
+    setEquipmentDraftMode("create");
+  };
+  const editEquipment = () => {
+    if (!equipment) return;
+    setEquipmentDraft({ ...equipment });
+    setEquipmentDraftMode("edit");
+  };
+  const closeEquipment = () => {
+    setEquipmentDraft(null);
+    setEquipmentDraftMode(null);
+  };
+  const updateEquipmentDraft = (patch: Partial<Equipment>) =>
+    setEquipmentDraft((item) => (item ? { ...item, ...patch } : item));
+  const validEquipmentDraft =
+    !!equipmentDraft &&
+    Number.isInteger(equipmentDraft.maxSaws) &&
+    positive(equipmentDraft.maxSaws) &&
+    positive(equipmentDraft.kerf) &&
+    positive(equipmentDraft.maxDiameter);
+  const saveEquipment = () => {
+    if (!equipmentDraft || !validEquipmentDraft) return;
+    const index =
+      equipmentDraftMode === "edit"
+        ? equipmentList.findIndex((item) => item.id === equipmentDraft.id)
+        : equipmentList.length;
+    const item = {
+      ...equipmentDraft,
+      name: equipmentDraft.name.trim() || `Оборудование ${index + 1}`,
     };
-    setEquipmentList((items) => [...items, item]);
+    setEquipmentList((items) =>
+      equipmentDraftMode === "edit"
+        ? items.map((existing) => (existing.id === item.id ? item : existing))
+        : [...items, item],
+    );
     setEquipmentId(item.id);
-    setEditingEquipment(true);
+    closeEquipment();
   };
   const deleteEquipment = () => {
-    if (!equipment) return;
-    const items = equipmentList.filter((item) => item.id !== equipment.id);
+    if (!equipmentDraft || equipmentDraftMode !== "edit") return;
+    const items = equipmentList.filter((item) => item.id !== equipmentDraft.id);
     setEquipmentList(items);
     setEquipmentId(items[0]?.id || "");
-    persistEquipment(items);
-    setEditingEquipment(false);
+    closeEquipment();
   };
-  const reset = () => {
-    setDiameter(320);
-    setLength(3650);
-    setProducts(DEFAULT_PRODUCTS);
+
+  const addLog = () => {
+    setLogAdded(true);
+    setDiameter(null);
+    setLogLength(null);
     setDefects([]);
   };
+  const removeLog = () => {
+    setLogAdded(false);
+    setDiameter(null);
+    setLogLength(null);
+    setDefects([]);
+  };
+  const resetCalculation = () => {
+    removeLog();
+    setProducts([]);
+    setFinishedLength(null);
+    setLengthAllowance(null);
+    setDrawingMode("final");
+    setZoom(1);
+  };
+
+  const addProduct = () =>
+    setProducts((items) => [
+      ...items,
+      {
+        id: `product-${Date.now()}-${items.length}`,
+        name: "Размер продукции",
+        nominalThickness: 0,
+        nominalWidth: 0,
+        cuttingThickness: 0,
+        cuttingWidth: 0,
+        color: items.length % 2 === 0 ? "blue" : "amber",
+        enabled: true,
+      },
+    ]);
+  const updateProduct = (id: string, patch: Partial<Product>) =>
+    setProducts((items) =>
+      items.map((item) => {
+        if (item.id !== id) return item;
+        const next = { ...item, ...patch };
+        return {
+          ...next,
+          name:
+            next.nominalThickness > 0 && next.nominalWidth > 0
+              ? `${next.nominalThickness} × ${next.nominalWidth} мм`
+              : "Размер продукции",
+        };
+      }),
+    );
+  const removeProduct = (id: string) =>
+    setProducts((items) => items.filter((item) => item.id !== id));
+
   const toggleDefects = (enabled: boolean) =>
-    setDefects(enabled ? [{ enabled: true, side: "right", depth: 20 }] : []);
+    setDefects(enabled ? [{ enabled: true, side: "right", depth: 0 }] : []);
   const addDefect = () => {
-    const unused = (
-      ["right", "left", "top", "bottom"] as Defect["side"][]
-    ).find((side) => !defects.some((defect) => defect.side === side));
-    if (unused)
-      setDefects((items) => [
-        ...items,
-        { enabled: true, side: unused, depth: 20 },
-      ]);
+    const unused = (["right", "left", "top", "bottom"] as Defect["side"][]).find(
+      (side) => !defects.some((defect) => defect.side === side),
+    );
+    if (unused) setDefects((items) => [...items, { enabled: true, side: unused, depth: 0 }]);
   };
   const updateDefect = (index: number, patch: Partial<Defect>) =>
     setDefects((items) =>
-      items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
+      items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
     );
   const removeDefect = (index: number) =>
     setDefects((items) => items.filter((_, itemIndex) => itemIndex !== index));
+
   const saveDrawing = async () => {
-    if (!svgRef.current || saveState === "saving") return;
+    if (!svgRef.current || saveState === "saving" || !diameter) return;
     setSaveState("saving");
     try {
       const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
@@ -552,10 +659,7 @@ export function CalculatorApp() {
       clone.setAttribute("width", "1200");
       clone.setAttribute("height", "1700");
       clone.style.transform = "none";
-      const style = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "style",
-      );
+      const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
       style.textContent = EXPORT_SVG_STYLES;
       clone.insertBefore(style, clone.firstChild);
       const sourceUrl = URL.createObjectURL(
@@ -585,20 +689,14 @@ export function CalculatorApp() {
           1,
         ),
       );
-      const file = new File([blob], `postav-${diameter}mm.png`, {
-        type: "image/png",
-      });
+      const file = new File([blob], `postav-${diameter}mm.png`, { type: "image/png" });
       const phoneShare =
         window.matchMedia("(pointer: coarse)").matches &&
         window.innerWidth < 900 &&
-        navigator.share &&
         navigator.canShare?.({ files: [file] });
-      if (phoneShare)
-        await navigator.share({
-          files: [file],
-          title: `Постав Ø${diameter} мм`,
-        });
-      else {
+      if (phoneShare) {
+        await navigator.share({ files: [file], title: `Постав Ø${diameter} мм` });
+      } else {
         const link = document.createElement("a");
         link.href = URL.createObjectURL(blob);
         link.download = file.name;
@@ -611,14 +709,25 @@ export function CalculatorApp() {
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 1800);
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError")
-        setSaveState("idle");
+      if (error instanceof DOMException && error.name === "AbortError") setSaveState("idle");
       else {
         setSaveState("error");
         setTimeout(() => setSaveState("idle"), 2500);
       }
     }
   };
+
+  const emptyAction = !equipment
+    ? { title: "Добавьте оборудование", button: "Добавить оборудование", action: addEquipment }
+    : !logAdded
+      ? { title: "Добавьте бревно", button: "Добавить бревно", action: addLog }
+      : !logReady
+        ? { title: "Заполните данные бревна", button: "", action: undefined }
+      : products.length === 0
+        ? { title: "Добавьте продукцию", button: "Добавить размер", action: addProduct }
+        : !productsReady || !orderReady
+          ? { title: "Заполните данные продукции", button: "", action: undefined }
+          : { title: "Проверьте исходные данные", button: "", action: undefined };
 
   return (
     <main className="app-shell">
@@ -627,16 +736,10 @@ export function CalculatorApp() {
           <div className="panel-heading">
             <span>Исходные данные</span>
             <div className="panel-heading-actions">
-              <button className="reset-button" onClick={reset}>
-                Сбросить всё
-              </button>
+              <button className="reset-button" onClick={resetCalculation}>Сбросить расчёт</button>
               <button
                 className="collapse-button"
-                aria-label={
-                  inputsOpen
-                    ? "Скрыть исходные данные"
-                    : "Показать исходные данные"
-                }
+                aria-label={inputsOpen ? "Скрыть исходные данные" : "Показать исходные данные"}
                 aria-expanded={inputsOpen}
                 onClick={() => setInputsOpen((value) => !value)}
               >
@@ -644,287 +747,198 @@ export function CalculatorApp() {
               </button>
             </div>
           </div>
+
           <div className="inputs-body">
             <section className="input-section equipment-section">
-              <div className="section-title">
-                <h3>Оборудование расчёта</h3>
-                <p>Этот станок будет указан на производственной карте</p>
+              <div className="section-title with-state">
+                <div>
+                  <h3>Оборудование</h3>
+                  <p>Настройки сохраняются на этом устройстве</p>
+                </div>
+                {equipment && <span className="ready-mark">Готово</span>}
               </div>
               {equipment ? (
                 <div className="active-equipment">
                   <label>
-                    <span>Выбранный станок</span>
-                    <select
-                      value={equipment.id}
-                      onChange={(event) => setEquipmentId(event.target.value)}
-                    >
+                    <span>Используем в расчёте</span>
+                    <select value={equipment.id} onChange={(event) => setEquipmentId(event.target.value)}>
                       {equipmentList.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
+                        <option key={item.id} value={item.id}>{item.name}</option>
                       ))}
                     </select>
                   </label>
                   <p className="active-equipment-summary">
-                    {equipment.maxSaws} пил · пропил {format(equipment.kerf)} мм
-                    · рабочий просвет Ø{equipment.maxDiameter} мм
+                    {equipment.maxSaws} пил · пропил {format(equipment.kerf)} мм · просвет {equipment.maxDiameter} мм
                   </p>
                   <div className="active-equipment-actions">
-                    <button onClick={() => setEditingEquipment(true)}>
-                      Настроить
-                    </button>
-                    <button
-                      className="equipment-plus"
-                      aria-label="Добавить ещё оборудование"
-                      onClick={addEquipment}
-                    >
-                      ＋
-                    </button>
+                    <button onClick={editEquipment}>Изменить</button>
+                    <button className="equipment-plus" aria-label="Добавить ещё оборудование" onClick={addEquipment}>＋</button>
                   </div>
                 </div>
               ) : (
-                <button className="add-equipment-button" onClick={addEquipment}>
-                  ＋ Добавить оборудование
-                </button>
+                <button className="primary-add-button" onClick={addEquipment}>＋ Добавить оборудование</button>
               )}
             </section>
+
             <section className="input-section log-section">
-              <div className="section-title">
-                <h3>Бревно</h3>
-                <p>Размеры и состояние конкретного бревна</p>
-              </div>
-              <div className="field-grid">
-                <NumberField
-                  label="Диаметр рабочего торца, мм"
-                  value={diameter}
-                  onChange={setDiameter}
-                />
-                <NumberField
-                  label="Готовая длина досок, мм"
-                  value={length}
-                  onChange={setLength}
-                />
-              </div>
-              <p className="length-requirement">
-                Для припуска +40 мм нужна длина бревна не менее <strong>{format(length + 40, 0)} мм</strong>
-              </p>
-              <div className="defect-panel">
-                <label className="defect-toggle">
-                  <input
-                    type="checkbox"
-                    checked={defects.length > 0}
-                    onChange={(event) => toggleDefects(event.target.checked)}
-                  />
-                  <div>
-                    <strong>Есть гниль или дефект</strong>
-                    <span>Можно отметить несколько повреждённых сторон</span>
-                  </div>
-                </label>
-                {defects.length > 0 && (
-                  <div className="defects-list">
-                    {defects.map((defect, index) => (
-                      <div className="defect-row" key={index}>
-                        <label>
-                          <span>Сторона</span>
-                          <select
-                            value={defect.side}
-                            onChange={(event) =>
-                              updateDefect(index, {
-                                side: event.target.value as Defect["side"],
-                              })
-                            }
-                          >
-                            <option value="right">Справа</option>
-                            <option value="left">Слева</option>
-                            <option value="top">Сверху</option>
-                            <option value="bottom">Снизу</option>
-                          </select>
-                        </label>
-                        <NumberField
-                          label="Глубина, мм"
-                          value={defect.depth}
-                          onChange={(depth) => updateDefect(index, { depth })}
-                        />
-                        <button
-                          aria-label={`Удалить дефект ${index + 1}`}
-                          onClick={() => removeDefect(index)}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    {defects.length < 4 && (
-                      <button className="add-defect-button" onClick={addDefect}>
-                        ＋ Добавить повреждённую сторону
-                      </button>
-                    )}
-                    <p className="defect-warning">
-                      Без сканера каждая зона считается непрерывной по всей
-                      длине.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
-            <section className="input-section boards-section">
-              <div className="section-title">
-                <h3>Сечения продукции</h3>
-                <p>Размеры готовых досок, которые нужно получить</p>
-              </div>
-              {products.map((product) => (
-                <div
-                  className={`product-editor ${!product.enabled ? "disabled" : ""}`}
-                  key={product.id}
-                >
-                  <div className="product-card-heading">
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={product.enabled}
-                        onChange={(event) =>
-                          updateProduct(product.id, {
-                            enabled: event.target.checked,
-                          })
-                        }
-                      />
-                      <strong>Включить в постав</strong>
-                    </label>
-                    <span>
-                      {product.nominalThickness} × {product.nominalWidth} мм
-                    </span>
-                  </div>
-                  <div className="field-pair-title">Готовое сечение</div>
-                  <div className="mini-fields">
-                    <NumberField
-                      label="Толщина, мм"
-                      value={product.nominalThickness}
-                      onChange={(value) =>
-                        updateProduct(product.id, {
-                          nominalThickness: value,
-                          cuttingThickness:
-                            value +
-                            Math.max(
-                              0,
-                              product.cuttingThickness -
-                                product.nominalThickness,
-                            ),
-                        })
-                      }
-                    />
-                    <NumberField
-                      label="Ширина, мм"
-                      value={product.nominalWidth}
-                      onChange={(value) =>
-                        updateProduct(product.id, {
-                          nominalWidth: value,
-                          cuttingWidth:
-                            value +
-                            Math.max(
-                              0,
-                              product.cuttingWidth - product.nominalWidth,
-                            ),
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="field-pair-title">Заготовка с припуском</div>
-                  <div className="mini-fields">
-                    <NumberField
-                      label="Толщина, мм"
-                      value={product.cuttingThickness}
-                      onChange={(value) =>
-                        updateProduct(product.id, { cuttingThickness: value })
-                      }
-                    />
-                    <NumberField
-                      label="Ширина, мм"
-                      value={product.cuttingWidth}
-                      onChange={(value) =>
-                        updateProduct(product.id, { cuttingWidth: value })
-                      }
-                    />
-                  </div>
-                  {variant && (
-                    <span className="result-count">
-                      На листе: {variant.counts[product.id] || 0} шт. — размеры
-                      сразу меняют постав
-                    </span>
-                  )}
+              <div className="section-title with-state">
+                <div>
+                  <h3>Бревно</h3>
+                  <p>Измеряем то бревно, которое сейчас пойдёт в распил</p>
                 </div>
-              ))}
+                {logReady && <span className="ready-mark">Готово</span>}
+              </div>
+              {!logAdded ? (
+                <button className="secondary-add-button" onClick={addLog}>＋ Добавить бревно</button>
+              ) : (
+                <div className="log-editor">
+                  <div className="field-grid">
+                    <NumberField label="Диаметр тонкого торца, мм" value={diameter} onChange={setDiameter} required />
+                    <NumberField label="Длина бревна, мм" value={logLength} onChange={setLogLength} required />
+                  </div>
+                  <p className="field-help">Тонкий торец ограничивает, какие сечения пройдут по всей длине.</p>
+                  <button className="text-remove-button" onClick={removeLog}>Убрать это бревно</button>
+                  <div className="defect-panel">
+                    <label className="defect-toggle">
+                      <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
+                      <div>
+                        <strong>Есть гниль или повреждение</strong>
+                        <span>Отметьте сторону и глубину повреждённой зоны</span>
+                      </div>
+                    </label>
+                    {defects.length > 0 && (
+                      <div className="defects-list">
+                        {defects.map((defect, index) => (
+                          <div className="defect-row" key={`${defect.side}-${index}`}>
+                            <label>
+                              <span>Сторона</span>
+                              <select value={defect.side} onChange={(event) => updateDefect(index, { side: event.target.value as Defect["side"] })}>
+                                <option value="right">Справа</option>
+                                <option value="left">Слева</option>
+                                <option value="top">Сверху</option>
+                                <option value="bottom">Снизу</option>
+                              </select>
+                            </label>
+                            <NumberField label="Глубина, мм" value={defect.depth || null} onChange={(depth) => updateDefect(index, { depth: depth ?? 0 })} />
+                            <button aria-label={`Удалить повреждение ${index + 1}`} onClick={() => removeDefect(index)}>×</button>
+                          </div>
+                        ))}
+                        {defects.length < 4 && <button className="add-defect-button" onClick={addDefect}>＋ Добавить ещё сторону</button>}
+                        <p className="defect-warning">Без промышленного сканера зона считается повреждённой по всей длине бревна.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="input-section boards-section">
+              <div className="section-title with-state">
+                <div>
+                  <h3>Что производим</h3>
+                  <p>Только реальные размеры вашего заказа</p>
+                </div>
+                {productsReady && orderReady && <span className="ready-mark">Готово</span>}
+              </div>
+
+              {products.length === 0 ? (
+                <div className="products-empty">
+                  <p>Размеров пока нет. Калькулятор ничего не будет придумывать сам.</p>
+                  <button className="secondary-add-button" onClick={addProduct}>＋ Добавить размер продукции</button>
+                </div>
+              ) : (
+                <>
+                  <div className="order-length-panel">
+                    <NumberField label="Готовая длина продукции, мм" value={finishedLength} onChange={setFinishedLength} required />
+                    <NumberField label="Припуск по длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
+                    <p>Одна длина для всех сечений в этом расчёте. Пустой припуск означает 0 мм.</p>
+                    {positive(finishedLength) && (
+                      <strong>Нужно бревно не короче {format(finishedLength! + (lengthAllowance ?? 0), 0)} мм</strong>
+                    )}
+                  </div>
+
+                  {products.map((product) => {
+                    const thicknessAllowance = Math.max(0, product.cuttingThickness - product.nominalThickness);
+                    const widthAllowance = Math.max(0, product.cuttingWidth - product.nominalWidth);
+                    const hasSize = positive(product.nominalThickness) && positive(product.nominalWidth);
+                    return (
+                      <div className="product-editor" key={product.id}>
+                        <div className="product-card-heading">
+                          <strong>{hasSize ? `${product.nominalThickness} × ${product.nominalWidth} мм` : "Новый размер"}</strong>
+                          <button aria-label="Удалить размер продукции" onClick={() => removeProduct(product.id)}>Удалить</button>
+                        </div>
+                        <div className="mini-fields">
+                          <NumberField
+                            label="Готовая толщина, мм"
+                            value={product.nominalThickness || null}
+                            onChange={(value) => {
+                              const nominal = value ?? 0;
+                              updateProduct(product.id, { nominalThickness: nominal, cuttingThickness: nominal + thicknessAllowance });
+                            }}
+                            required
+                          />
+                          <NumberField
+                            label="Готовая ширина, мм"
+                            value={product.nominalWidth || null}
+                            onChange={(value) => {
+                              const nominal = value ?? 0;
+                              updateProduct(product.id, { nominalWidth: nominal, cuttingWidth: nominal + widthAllowance });
+                            }}
+                            required
+                          />
+                        </div>
+                        <details className="allowance-details">
+                          <summary>Припуски на обработку</summary>
+                          <p>Откройте только если пилите размер больше готового.</p>
+                          <div className="mini-fields">
+                            <NumberField label="К толщине, мм" value={thicknessAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingThickness: product.nominalThickness + (value ?? 0) })} />
+                            <NumberField label="К ширине, мм" value={widthAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingWidth: product.nominalWidth + (value ?? 0) })} />
+                          </div>
+                        </details>
+                        {variant && <span className="result-count">На чертеже: {variant.counts[product.id] || 0} шт.</span>}
+                      </div>
+                    );
+                  })}
+                  <button className="add-product-button" onClick={addProduct}>＋ Добавить ещё размер</button>
+                </>
+              )}
             </section>
           </div>
         </aside>
+
         <section className="drawing-panel">
           <div className="drawing-toolbar">
             <div>
               <h2>Чертёж распила</h2>
               <p className="drawing-context">
-                {variant
-                  ? `Бревно Ø${format(diameter, 0)} мм · выход ${variant.pieces.length} досок`
-                  : "Появится после добавления оборудования"}
+                {variant && diameter
+                  ? `Бревно Ø${format(diameter, 0)} мм · получаем ${variant.pieces.length} шт.`
+                  : "Чертёж появится, когда исходные данные будут заполнены"}
               </p>
             </div>
             {variant && (
               <>
                 <div className="drawing-tabs">
-                  <button
-                    className={drawingMode === "final" ? "active" : ""}
-                    onClick={() => setDrawingMode("final")}
-                  >
-                    Итог
-                  </button>
-                  <button
-                    className={drawingMode === "first" ? "active" : ""}
-                    onClick={() => setDrawingMode("first")}
-                  >
-                    1-й распил
-                  </button>
-                  <button
-                    className={drawingMode === "second" ? "active" : ""}
-                    onClick={() => setDrawingMode("second")}
-                  >
-                    2-й распил
-                  </button>
+                  <button className={drawingMode === "final" ? "active" : ""} onClick={() => setDrawingMode("final")}>Итог</button>
+                  <button className={drawingMode === "first" ? "active" : ""} onClick={() => setDrawingMode("first")}>1-й распил</button>
+                  <button className={drawingMode === "second" ? "active" : ""} onClick={() => setDrawingMode("second")}>2-й распил</button>
                 </div>
                 <div className="toolbar-actions">
-                  <button
-                    aria-label="Уменьшить чертёж"
-                    onClick={() =>
-                      setZoom((value) => Math.max(0.5, value - 0.1))
-                    }
-                  >
-                    −
-                  </button>
+                  <button aria-label="Уменьшить чертёж" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}>−</button>
                   <span>{Math.round(zoom * 100)}%</span>
-                  <button
-                    aria-label="Увеличить чертёж"
-                    onClick={() => setZoom((value) => Math.min(2, value + 0.1))}
-                  >
-                    +
-                  </button>
-                  <button
-                    className="download-button"
-                    onClick={saveDrawing}
-                    disabled={saveState === "saving"}
-                  >
-                    {saveState === "saving"
-                      ? "Готовим…"
-                      : saveState === "saved"
-                        ? "✓ Сохранено"
-                        : saveState === "error"
-                          ? "Ошибка"
-                          : "Сохранить в галерею"}
+                  <button aria-label="Увеличить чертёж" onClick={() => setZoom((value) => Math.min(2, value + 0.1))}>+</button>
+                  <button className="download-button" onClick={saveDrawing} disabled={saveState === "saving"}>
+                    {saveState === "saving" ? "Готовим…" : saveState === "saved" ? "✓ Сохранено" : saveState === "error" ? "Ошибка" : "Сохранить в галерею"}
                   </button>
                 </div>
               </>
             )}
           </div>
           <div className="drawing-stage">
-            {variant && equipment ? (
+            {variant && equipment && diameter && finishedLength ? (
               <TechnicalDrawing
-                diameter={Math.max(1, diameter)}
-                length={length}
+                diameter={diameter}
+                length={finishedLength}
                 variant={variant}
                 products={products}
                 mode={drawingMode}
@@ -935,126 +949,67 @@ export function CalculatorApp() {
                 sawCoordinates={sawCoordinates}
               />
             ) : (
-              <div className="drawing-empty">
-                <span>＋</span>
-                <h2>Начните с оборудования</h2>
-                <p>
-                  Добавьте реальный станок — после этого здесь появится чертёж
-                  распила.
-                </p>
-                <button onClick={addEquipment}>Добавить оборудование</button>
+              <div className={`drawing-empty ${result.status === "no-solution" ? "error" : ""}`}>
+                <span>{result.status === "no-solution" ? "!" : "＋"}</span>
+                <h2>{result.status === "no-solution" ? "Раскрой не найден" : emptyAction.title}</h2>
+                <p>{result.error || missingMessage}</p>
+                {emptyAction.action && result.status !== "no-solution" && (
+                  <button onClick={emptyAction.action}>{emptyAction.button}</button>
+                )}
               </div>
             )}
           </div>
           {variant && (
             <div className="drawing-caption">
-              <span>
-                <i className="legend center" /> Центральная продукция
-              </span>
-              <span>
-                <i className="legend side" /> Боковая продукция
-              </span>
-              {defects.length > 0 && (
-                <span>
-                  <i className="legend defect" /> Исключённая зона
-                </span>
-              )}
+              <span><i className="legend center" /> Центральная продукция</span>
+              <span><i className="legend side" /> Боковая продукция</span>
+              {defects.length > 0 && <span><i className="legend defect" /> Исключённая зона</span>}
               <strong>Оборудование указано на карте</strong>
             </div>
           )}
         </section>
       </section>
-      {editingEquipment && equipment && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={() => setEditingEquipment(false)}
-        >
-          <section
-            className="equipment-modal"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
+
+      {equipmentDraft && (
+        <div className="modal-backdrop" onMouseDown={closeEquipment}>
+          <section className="equipment-modal" onMouseDown={(event) => event.stopPropagation()}>
             <div className="modal-heading">
               <div>
-                <p className="eyebrow">Профиль оборудования</p>
-                <h2>{equipment.name}</h2>
+                <h2>{equipmentDraftMode === "create" ? "Добавить оборудование" : "Настройки оборудования"}</h2>
+                <p>Введите фактические ограничения станка. Пустые значения не сохраняются.</p>
               </div>
-              <button onClick={() => setEditingEquipment(false)}>×</button>
+              <button aria-label="Закрыть" onClick={closeEquipment}>×</button>
             </div>
-            <label className="wide-field">
-              <span>Название</span>
-              <input
-                value={equipment.name}
-                onChange={(event) =>
-                  updateEquipment({ name: event.target.value })
-                }
-              />
-            </label>
             <div className="modal-grid">
-              <NumberField
-                label="Максимум пил"
-                value={equipment.maxSaws}
-                onChange={(value) => updateEquipment({ maxSaws: value })}
-              />
-              <NumberField
-                label="Пропил, мм"
-                value={equipment.kerf}
-                step={0.1}
-                onChange={(value) => updateEquipment({ kerf: value })}
-              />
-              <NumberField
-                label="Макс. диаметр, мм"
-                value={equipment.maxDiameter}
-                onChange={(value) => updateEquipment({ maxDiameter: value })}
-              />
+              <NumberField label="Количество пил" value={equipmentDraft.maxSaws || null} onChange={(value) => updateEquipmentDraft({ maxSaws: value ?? 0 })} required />
+              <NumberField label="Ширина пропила, мм" value={equipmentDraft.kerf || null} step={0.1} onChange={(value) => updateEquipmentDraft({ kerf: value ?? 0 })} required />
+              <NumberField label="Максимальный просвет, мм" value={equipmentDraft.maxDiameter || null} onChange={(value) => updateEquipmentDraft({ maxDiameter: value ?? 0 })} required />
             </div>
             <label className="check-row">
-              <input
-                type="checkbox"
-                checked={equipment.secondaryEdging}
-                onChange={(event) =>
-                  updateEquipment({ secondaryEdging: event.target.checked })
-                }
-              />
+              <input type="checkbox" checked={equipmentDraft.secondaryEdging} onChange={(event) => updateEquipmentDraft({ secondaryEdging: event.target.checked })} />
               <div>
-                <strong>Есть вторичная обрезка</strong>
-                <span>
-                  Можно получать боковые доски из отделённых заготовок.
-                </span>
+                <strong>Есть отдельная обрезка боковых частей</strong>
+                <span>Позволяет получать дополнительную продукцию по краям бревна.</span>
               </div>
             </label>
             <label className="check-row">
-              <input
-                type="checkbox"
-                checked={equipment.multipleFeeds}
-                onChange={(event) =>
-                  updateEquipment({ multipleFeeds: event.target.checked })
-                }
-              />
+              <input type="checkbox" checked={equipmentDraft.multipleFeeds} onChange={(event) => updateEquipmentDraft({ multipleFeeds: event.target.checked })} />
               <div>
-                <strong>Разрешены несколько подач</strong>
-                <span>
-                  Если пил недостаточно, операция разбивается на несколько
-                  подач.
-                </span>
+                <strong>Можно пилить за несколько подач</strong>
+                <span>Если одного набора пил недостаточно, постав выполняется поэтапно.</span>
               </div>
+            </label>
+            <label className="wide-field optional-name">
+              <span>Название для списка — необязательно</span>
+              <input value={equipmentDraft.name} placeholder="Например: основной многопил" onChange={(event) => updateEquipmentDraft({ name: event.target.value })} />
             </label>
             <div className="modal-actions spread">
-              <button className="delete-button" onClick={deleteEquipment}>
-                Удалить оборудование
-              </button>
+              {equipmentDraftMode === "edit" ? (
+                <button className="delete-button" onClick={deleteEquipment}>Удалить оборудование</button>
+              ) : <span />}
               <div>
-                <button
-                  className="quiet-button"
-                  onClick={() => setEditingEquipment(false)}
-                >
-                  Отмена
-                </button>
-                <button
-                  className="calculate-button compact"
-                  onClick={saveEquipment}
-                >
-                  Сохранить
-                </button>
+                <button className="quiet-button" onClick={closeEquipment}>Отмена</button>
+                <button className="calculate-button compact" onClick={saveEquipment} disabled={!validEquipmentDraft}>Сохранить</button>
               </div>
             </div>
           </section>
