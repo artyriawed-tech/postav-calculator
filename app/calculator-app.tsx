@@ -835,26 +835,33 @@ export function CalculatorApp() {
             <section className="input-section boards-section">
               <div className="section-title with-state">
                 <div>
-                  <h3>Что производим</h3>
-                  <p>Только реальные размеры вашего заказа</p>
+                  <h3>Продукция</h3>
+                  <p>Введите готовые размеры. Программа сама разместит их в бревне.</p>
                 </div>
                 {productsReady && orderReady && <span className="ready-mark">Готово</span>}
               </div>
 
-              {products.length === 0 ? (
-                <div className="products-empty">
-                  <p>Размеров пока нет. Калькулятор ничего не будет придумывать сам.</p>
-                  <button className="secondary-add-button" onClick={addProduct}>＋ Добавить размер продукции</button>
+              {!equipmentReady || !logReady ? (
+                <div className="product-locked">
+                  Сначала добавьте оборудование и заполните данные бревна.
                 </div>
+              ) : products.length === 0 ? (
+                <button className="primary-product-button" onClick={addProduct}>＋ Добавить продукцию</button>
               ) : (
                 <>
-                  <div className="order-length-panel">
-                    <NumberField label="Готовая длина продукции, мм" value={finishedLength} onChange={setFinishedLength} required />
-                    <NumberField label="Припуск по длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
-                    <p>Одна длина для всех сечений в этом расчёте. Пустой припуск означает 0 мм.</p>
+                  <div className="product-length-group">
+                    <div className="product-group-heading">
+                      <strong>Длина всей продукции</strong>
+                      <span>Одинаковая для всех сечений</span>
+                    </div>
+                    <NumberField label="Готовая длина, мм" value={finishedLength} onChange={setFinishedLength} required />
                     {positive(finishedLength) && (
-                      <strong>Нужно бревно не короче {format(finishedLength! + (lengthAllowance ?? 0), 0)} мм</strong>
+                      <p className="length-check">Для распила нужно {format(finishedLength! + (lengthAllowance ?? 0), 0)} мм длины бревна</p>
                     )}
+                    <details className="length-allowance-details">
+                      <summary>Припуск по длине, если нужен</summary>
+                      <NumberField label="Добавить к длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
+                    </details>
                   </div>
 
                   {products.map((product) => {
@@ -864,12 +871,15 @@ export function CalculatorApp() {
                     return (
                       <div className="product-editor" key={product.id}>
                         <div className="product-card-heading">
-                          <strong>{hasSize ? `${product.nominalThickness} × ${product.nominalWidth} мм` : "Новый размер"}</strong>
-                          <button aria-label="Удалить размер продукции" onClick={() => removeProduct(product.id)}>Удалить</button>
+                          <div>
+                            <span>Сечение продукции</span>
+                            <strong>{hasSize ? `${product.nominalThickness} × ${product.nominalWidth} мм` : "Введите размер"}</strong>
+                          </div>
+                          <button aria-label="Удалить продукцию" onClick={() => removeProduct(product.id)}>Удалить</button>
                         </div>
-                        <div className="mini-fields">
+                        <div className="product-size-formula">
                           <NumberField
-                            label="Готовая толщина, мм"
+                            label="Толщина"
                             value={product.nominalThickness || null}
                             onChange={(value) => {
                               const nominal = value ?? 0;
@@ -877,8 +887,9 @@ export function CalculatorApp() {
                             }}
                             required
                           />
+                          <span className="formula-times" aria-hidden="true">×</span>
                           <NumberField
-                            label="Готовая ширина, мм"
+                            label="Ширина"
                             value={product.nominalWidth || null}
                             onChange={(value) => {
                               const nominal = value ?? 0;
@@ -886,10 +897,10 @@ export function CalculatorApp() {
                             }}
                             required
                           />
+                          <strong className="formula-unit">мм</strong>
                         </div>
                         <details className="allowance-details">
-                          <summary>Припуски на обработку</summary>
-                          <p>Откройте только если пилите размер больше готового.</p>
+                          <summary>Припуски на обработку, если нужны</summary>
                           <div className="mini-fields">
                             <NumberField label="К толщине, мм" value={thicknessAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingThickness: product.nominalThickness + (value ?? 0) })} />
                             <NumberField label="К ширине, мм" value={widthAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingWidth: product.nominalWidth + (value ?? 0) })} />
@@ -899,7 +910,7 @@ export function CalculatorApp() {
                       </div>
                     );
                   })}
-                  <button className="add-product-button" onClick={addProduct}>＋ Добавить ещё размер</button>
+                  <button className="add-product-button" onClick={addProduct}>＋ Ещё одно сечение</button>
                 </>
               )}
             </section>
