@@ -80,12 +80,12 @@ test("боковой дефект сдвигает постав и сохран�
   assert.ok(result.variants[0].pieces.every((piece) => piece.x + piece.width <= 140));
 });
 
-test("заготовка меньше готовой доски отклоняется до построения чертежа", () => {
+test("размер распила меньше готовой доски отклоняется до построения чертежа", () => {
   const products = DEFAULT_PRODUCTS.map((product) => product.id === "wide" ? { ...product, cuttingThickness: 19 } : product);
   const result = calculate({ diameter: 320, length: 3650, products, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   assert.equal(result.status, "invalid");
   assert.equal(result.variants.length, 0);
-  assert.match(result.error || "", /не может быть меньше номинала/);
+  assert.match(result.error || "", /не может быть меньше готового размера/);
 });
 
 test("узкие доски заполняют боковые зоны рядами, а не одиночной доской по центру", () => {

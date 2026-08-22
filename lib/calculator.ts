@@ -275,7 +275,7 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   for (const product of products) {
     const values = [product.nominalThickness, product.nominalWidth, product.cuttingThickness, product.cuttingWidth];
     if (values.some((value) => !Number.isFinite(value) || value <= 0)) return { status: "invalid", variants: [], error: `Проверьте размеры изделия «${product.name}»: все значения должны быть больше нуля.` };
-    if (product.cuttingThickness < product.nominalThickness || product.cuttingWidth < product.nominalWidth) return { status: "invalid", variants: [], error: `Заготовка «${product.name}» не может быть меньше номинала ${product.nominalThickness}×${product.nominalWidth} мм.` };
+    if (product.cuttingThickness < product.nominalThickness || product.cuttingWidth < product.nominalWidth) return { status: "invalid", variants: [], error: `Размер распила «${product.name}» не может быть меньше готового размера ${product.nominalThickness}×${product.nominalWidth} мм.` };
   }
   if (equipment.kerf <= 0) return { status: "invalid", variants: [], error: "Ширина пропила должна быть больше нуля." };
   const suppliedDefects = input.defects || (input.defect ? [input.defect] : []);

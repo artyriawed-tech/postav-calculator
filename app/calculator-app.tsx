@@ -412,7 +412,7 @@ function TechnicalDrawing({
           {sawSummary || "Не требуется"}
         </text>
         <text x="546" y="160" textAnchor="end" className="card-label">
-          ЗАГОТОВКИ / ОСТАТОК
+          РАСПИЛЕНО / ОСТАТОК
         </text>
         <text x="546" y="180" textAnchor="end" className="card-value">
           {format(variant.cuttingRecovery)}% /{" "}
