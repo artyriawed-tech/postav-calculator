@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
+  LOG_DIAMETERS,
+  MILL_LINE,
+  PRODUCT_CATALOG,
   type Calculation,
   type Defect,
   type Equipment,
@@ -57,6 +60,21 @@ function NumberField({
       />
     </label>
   );
+}
+
+function productsForOrder(primaryId: string, includeByproducts: boolean) {
+  const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId);
+  if (!primary) return [];
+  return PRODUCT_CATALOG.filter((product) =>
+    product.id === primaryId ||
+    (includeByproducts &&
+      product.nominalThickness <= primary.nominalThickness &&
+      product.nominalWidth <= primary.nominalWidth),
+  ).map((product) => ({
+    ...product,
+    enabled: true,
+    priority: product.id === primaryId ? "primary" as const : "byproduct" as const,
+  }));
 }
 
 function defectRect(
@@ -159,7 +177,8 @@ function TechnicalDrawing({
   const chordHalfWidth = (y: number) =>
     Math.sqrt(Math.max(0, (diameter / 2) ** 2 - y * y));
   const productRows = products
-    .filter((product) => product.enabled)
+    .filter((product) => product.enabled && (variant.counts[product.id] || 0) > 0)
+    .sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary"))
     .map(
       (product) =>
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
@@ -354,12 +373,11 @@ function TechnicalDrawing({
           {mode === "final"
             ? "ИТОГОВЫЙ ПОСТАВ"
             : mode === "first"
-              ? "ПЕРВЫЙ РАСПИЛ"
-              : "ВТОРОЙ РАСПИЛ"}
+              ? "КРОМКООБРЕЗНОЙ СТАНОК"
+              : "МНОГОПИЛ"}
         </text>
         <text x="546" y="23" textAnchor="end" className="card-header-meta">
-          Ø{format(diameter, 0)} · ГОТОВАЯ ДЛИНА {format(length, 0)} ММ ·{" "}
-          {variant.pieces.length} ДОСОК
+          Ø{format(diameter, 0)} · {variant.pieces.length} ИЗДЕЛИЙ С БРЕВНА
         </text>
         <g transform="translate(14 50)">
           <rect width="342" height="80" rx="3" className="result-group" />
@@ -372,8 +390,7 @@ function TechnicalDrawing({
             {format(variant.nominalRecovery)}%
           </text>
           <text x="12" y="69" className="card-note">
-            {format(variant.nominalVolume, 3)} м³ из{" "}
-            {format(variant.logVolume, 3)} м³
+            основной заказ + полезная побочная продукция
           </text>
           <text x="164" y="18" className="card-label">
             ПРОДУКЦИЯ
@@ -395,13 +412,13 @@ function TechnicalDrawing({
             ОБОРУДОВАНИЕ РАСЧЁТА
           </text>
           <text x="12" y="39" className="equipment-name">
-            {equipment.name}
+            БРУСОВАЛЬНЫЙ · 5 ММ
           </text>
-          <text x="12" y="62" className="equipment-spec">
-            {equipment.maxSaws} ПИЛ · ПРОПИЛ {format(equipment.kerf)} ММ
+          <text x="12" y="56" className="equipment-spec">
+            МНОГОПИЛ · 4 ММ
           </text>
-          <text x="12" y="75" className="equipment-label">
-            ЛИНИЙ РЕЗА: {variant.mainSawCount} · ПОДАЧ: {variant.feeds}
+          <text x="12" y="72" className="equipment-label">
+            КРОМКООБРЕЗНОЙ · 3,8 ММ
           </text>
         </g>
         <line x1="14" y1="143" x2="546" y2="143" className="card-rule" />
@@ -426,29 +443,32 @@ function TechnicalDrawing({
 export function CalculatorApp() {
   const [diameter, setDiameter] = useState<number | null>(null);
   const [logLength, setLogLength] = useState<number | null>(null);
-  const [logAdded, setLogAdded] = useState(false);
+  const [logAdded, setLogAdded] = useState(true);
   const [finishedLength, setFinishedLength] = useState<number | null>(null);
   const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
-  const [equipmentId, setEquipmentId] = useState("");
+  const [includeByproducts, setIncludeByproducts] = useState(true);
+  const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
+  const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
   const [equipmentDraft, setEquipmentDraft] = useState<Equipment | null>(null);
   const [equipmentDraftMode, setEquipmentDraftMode] = useState<"create" | "edit" | null>(null);
   const [defects, setDefects] = useState<Defect[]>([]);
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("final");
   const [zoom, setZoom] = useState(1);
   const [inputsOpen, setInputsOpen] = useState(true);
-  const [equipmentLoaded, setEquipmentLoaded] = useState(false);
+  const [equipmentLoaded, setEquipmentLoaded] = useState(true);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("postav-equipment-v3");
+      const saved = localStorage.getItem("postav-equipment-v4");
       if (saved) {
         const items: Equipment[] = JSON.parse(saved);
-        setEquipmentList(items);
-        setEquipmentId(items[0]?.id || "");
+        if (items.length) {
+          setEquipmentList(items);
+          setEquipmentId(items[0].id);
+        }
       }
     } catch {
       /* device-local setting */
@@ -459,7 +479,7 @@ export function CalculatorApp() {
 
   useEffect(() => {
     if (equipmentLoaded) {
-      localStorage.setItem("postav-equipment-v3", JSON.stringify(equipmentList));
+      localStorage.setItem("postav-equipment-v4", JSON.stringify(equipmentList));
     }
   }, [equipmentList, equipmentLoaded]);
 
@@ -467,41 +487,42 @@ export function CalculatorApp() {
   const positive = (value: number | null | undefined) =>
     typeof value === "number" && Number.isFinite(value) && value > 0;
   const equipmentReady =
-    !!equipment && Number.isInteger(equipment.maxSaws) && positive(equipment.maxSaws) && positive(equipment.kerf) && positive(equipment.maxDiameter);
-  const logReady = logAdded && positive(diameter) && positive(logLength);
+    !!equipment && positive(equipment.kerf) && !!equipment.stages;
+  const logReady = logAdded && positive(diameter);
   const productsReady =
-    products.length > 0 &&
-    products.every(
+    products.some((product) => product.enabled && product.priority === "primary") &&
+    products.filter((product) => product.enabled).every(
       (product) =>
         positive(product.nominalThickness) &&
         positive(product.nominalWidth) &&
         product.cuttingThickness >= product.nominalThickness &&
         product.cuttingWidth >= product.nominalWidth,
     );
-  const orderReady = positive(finishedLength) && (lengthAllowance === null || lengthAllowance >= 0);
+  const orderReady = productsReady && (lengthAllowance === null || lengthAllowance >= 0);
   const readyToCalculate = equipmentReady && logReady && productsReady && orderReady;
 
   const missingMessage = !equipment
     ? "Добавьте оборудование, на котором будет выполняться распил."
     : !logAdded
-      ? "Добавьте и измерьте конкретное бревно."
+      ? "Выберите диаметр бревна."
       : !logReady
-        ? "Введите диаметр тонкого торца и фактическую длину бревна."
+        ? "Выберите диаметр тонкого торца."
         : products.length === 0
           ? "Добавьте размеры продукции, которую нужно получить."
           : !productsReady
             ? "Заполните толщину и ширину каждого размера продукции."
-            : !orderReady
-              ? "Введите готовую длину продукции."
-              : "";
+            : "";
+
+  const calculationLength = finishedLength ?? logLength ?? 1000;
+  const calculationLogLength = logLength ?? calculationLength;
 
   const result: Calculation = useMemo(
     () =>
       readyToCalculate && equipment
         ? calculate({
             diameter: diameter!,
-            length: finishedLength!,
-            logLength: logLength!,
+            length: calculationLength,
+            logLength: calculationLogLength,
             lengthAllowance: lengthAllowance ?? 0,
             products,
             equipment,
@@ -509,7 +530,7 @@ export function CalculatorApp() {
             topN: 1,
           })
         : { status: "invalid", variants: [], error: missingMessage },
-    [readyToCalculate, equipment, diameter, finishedLength, logLength, lengthAllowance, products, defects, missingMessage],
+    [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, products, defects, missingMessage],
   );
   const variant = result.variants[0];
 
@@ -520,11 +541,11 @@ export function CalculatorApp() {
       .sort((a, b) => a.x - b.x);
     if (!row.length) return [];
     return [
-      row[0].x - equipment.kerf / 2,
+      row[0].x - (equipment.stages?.multiripKerf ?? equipment.kerf) / 2,
       ...row.slice(0, -1).map(
         (piece, index) => (piece.x + piece.width + row[index + 1].x) / 2,
       ),
-      row.at(-1)!.x + row.at(-1)!.width + equipment.kerf / 2,
+      row.at(-1)!.x + row.at(-1)!.width + (equipment.stages?.multiripKerf ?? equipment.kerf) / 2,
     ];
   }, [variant, equipment]);
 
@@ -590,7 +611,7 @@ export function CalculatorApp() {
     setDefects([]);
   };
   const removeLog = () => {
-    setLogAdded(false);
+    setLogAdded(true);
     setDiameter(null);
     setLogLength(null);
     setDefects([]);
@@ -600,24 +621,19 @@ export function CalculatorApp() {
     setProducts([]);
     setFinishedLength(null);
     setLengthAllowance(null);
+    setIncludeByproducts(true);
     setDrawingMode("final");
     setZoom(1);
   };
 
-  const addProduct = () =>
-    setProducts((items) => [
-      ...items,
-      {
-        id: `product-${Date.now()}-${items.length}`,
-        name: "Размер продукции",
-        nominalThickness: 0,
-        nominalWidth: 0,
-        cuttingThickness: 0,
-        cuttingWidth: 0,
-        color: items.length % 2 === 0 ? "blue" : "amber",
-        enabled: true,
-      },
-    ]);
+  const selectPrimaryProduct = (id: string) =>
+    setProducts(productsForOrder(id, includeByproducts));
+  const changeByproducts = (enabled: boolean) => {
+    setIncludeByproducts(enabled);
+    const primary = products.find((product) => product.priority === "primary");
+    if (primary) setProducts(productsForOrder(primary.id, enabled));
+  };
+  const addProduct = () => setProducts([]);
   const updateProduct = (id: string, patch: Partial<Product>) =>
     setProducts((items) =>
       items.map((item) => {
@@ -632,8 +648,7 @@ export function CalculatorApp() {
         };
       }),
     );
-  const removeProduct = (id: string) =>
-    setProducts((items) => items.filter((item) => item.id !== id));
+  const removeProduct = () => setProducts([]);
 
   const toggleDefects = (enabled: boolean) =>
     setDefects(enabled ? [{ enabled: true, side: "right", depth: 0 }] : []);
@@ -724,7 +739,7 @@ export function CalculatorApp() {
       : !logReady
         ? { title: "Заполните данные бревна", button: "", action: undefined }
       : products.length === 0
-        ? { title: "Добавьте продукцию", button: "Добавить размер", action: addProduct }
+        ? { title: "Выберите основной заказ", button: "", action: undefined }
         : !productsReady || !orderReady
           ? { title: "Заполните данные продукции", button: "", action: undefined }
           : { title: "Проверьте исходные данные", button: "", action: undefined };
@@ -758,22 +773,16 @@ export function CalculatorApp() {
                 {equipment && <span className="ready-mark">Готово</span>}
               </div>
               {equipment ? (
-                <div className="active-equipment">
-                  <label>
-                    <span>Используем в расчёте</span>
-                    <select value={equipment.id} onChange={(event) => setEquipmentId(event.target.value)}>
-                      {equipmentList.map((item) => (
-                        <option key={item.id} value={item.id}>{item.name}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <p className="active-equipment-summary">
-                    {equipment.maxSaws} пил · пропил {format(equipment.kerf)} мм · просвет {equipment.maxDiameter} мм
-                  </p>
-                  <div className="active-equipment-actions">
-                    <button onClick={editEquipment}>Изменить</button>
-                    <button className="equipment-plus" aria-label="Добавить ещё оборудование" onClick={addEquipment}>＋</button>
+                <div className="mill-line-card">
+                  <strong>Линия настроена</strong>
+                  <div className="mill-stages">
+                    <span><b>Брусовальный</b><small>пропил 5 мм</small></span>
+                    <i>→</i>
+                    <span><b>Многопил</b><small>пропил 4 мм</small></span>
+                    <i>→</i>
+                    <span><b>Кромкообрезной</b><small>пропил 3,8 мм</small></span>
                   </div>
+                  <p>Эти значения уже участвуют в каждом расчёте.</p>
                 </div>
               ) : (
                 <button className="primary-add-button" onClick={addEquipment}>＋ Добавить оборудование</button>
@@ -792,12 +801,26 @@ export function CalculatorApp() {
                 <button className="secondary-add-button" onClick={addLog}>＋ Добавить бревно</button>
               ) : (
                 <div className="log-editor">
-                  <div className="field-grid">
-                    <NumberField label="Диаметр тонкого торца, мм" value={diameter} onChange={setDiameter} required />
-                    <NumberField label="Длина бревна, мм" value={logLength} onChange={setLogLength} required />
+                  <strong className="input-prompt">Выберите диаметр тонкого торца</strong>
+                  <div className="diameter-grid">
+                    {LOG_DIAMETERS.map((value) => (
+                      <button
+                        key={value}
+                        className={diameter === value ? "active" : ""}
+                        onClick={() => setDiameter(value)}
+                      >
+                        Ø{value / 10}
+                      </button>
+                    ))}
                   </div>
-                  <p className="field-help">Тонкий торец ограничивает, какие сечения пройдут по всей длине.</p>
-                  <button className="text-remove-button" onClick={removeLog}>Убрать это бревно</button>
+                  <div className="manual-diameter">
+                    <NumberField label="Другой диаметр, мм" value={diameter} onChange={setDiameter} required />
+                  </div>
+                  <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
+                  <details className="log-extra-details">
+                    <summary>Указать длину бревна — необязательно</summary>
+                    <NumberField label="Длина, мм" value={logLength} onChange={(value) => { setLogLength(value); setFinishedLength(value); }} />
+                  </details>
                   <div className="defect-panel">
                     <label className="defect-toggle">
                       <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
@@ -835,82 +858,53 @@ export function CalculatorApp() {
             <section className="input-section boards-section">
               <div className="section-title with-state">
                 <div>
-                  <h3>Продукция</h3>
-                  <p>Введите готовые размеры. Программа сама разместит их в бревне.</p>
+                  <h3>Что нужно получить</h3>
+                  <p>Выберите основной размер заказа. Остаток программа заполнит полезной продукцией.</p>
                 </div>
                 {productsReady && orderReady && <span className="ready-mark">Готово</span>}
               </div>
 
               {!equipmentReady || !logReady ? (
                 <div className="product-locked">
-                  Сначала добавьте оборудование и заполните данные бревна.
+                  Сначала выберите диаметр бревна.
                 </div>
               ) : products.length === 0 ? (
-                <button className="primary-product-button" onClick={addProduct}>＋ Добавить продукцию</button>
+                <div className="catalog-picker">
+                  <strong>Основной заказ</strong>
+                  <p>Какой размер нужно получить в первую очередь?</p>
+                  <div className="catalog-grid">
+                    {PRODUCT_CATALOG.map((product) => (
+                      <button key={product.id} onClick={() => selectPrimaryProduct(product.id)}>
+                        {product.nominalThickness} × {product.nominalWidth}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <>
-                  <div className="product-length-group">
-                    <div className="product-group-heading">
-                      <strong>Длина всей продукции</strong>
-                      <span>Одинаковая для всех сечений</span>
-                    </div>
-                    <NumberField label="Готовая длина, мм" value={finishedLength} onChange={setFinishedLength} required />
-                    {positive(finishedLength) && (
-                      <p className="length-check">Для распила нужно {format(finishedLength! + (lengthAllowance ?? 0), 0)} мм длины бревна</p>
-                    )}
-                    <details className="length-allowance-details">
-                      <summary>Припуск по длине, если нужен</summary>
-                      <NumberField label="Добавить к длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
-                    </details>
+                  <div className="selected-order-card">
+                    <span>Основной заказ</span>
+                    <strong>{products.find((product) => product.priority === "primary")?.name}</strong>
+                    <button onClick={() => removeProduct()}>Изменить размер</button>
                   </div>
-
-                  {products.map((product) => {
-                    const thicknessAllowance = Math.max(0, product.cuttingThickness - product.nominalThickness);
-                    const widthAllowance = Math.max(0, product.cuttingWidth - product.nominalWidth);
-                    const hasSize = positive(product.nominalThickness) && positive(product.nominalWidth);
-                    return (
-                      <div className="product-editor" key={product.id}>
-                        <div className="product-card-heading">
-                          <div>
-                            <span>Сечение продукции</span>
-                            <strong>{hasSize ? `${product.nominalThickness} × ${product.nominalWidth} мм` : "Введите размер"}</strong>
-                          </div>
-                          <button aria-label="Удалить продукцию" onClick={() => removeProduct(product.id)}>Удалить</button>
+                  <label className="byproduct-toggle">
+                    <input type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
+                    <span>
+                      <strong>Заполнять свободные места</strong>
+                      <small>Добавлять меньшие размеры из ассортимента, если они повышают полезный выход.</small>
+                    </span>
+                  </label>
+                  {variant && (
+                    <div className="order-result-list">
+                      <strong>Получится с одного бревна</strong>
+                      {[...products].filter((product) => (variant.counts[product.id] || 0) > 0).sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary")).map((product) => (
+                        <div key={product.id} className={product.priority === "primary" ? "primary" : ""}>
+                          <span>{product.name}</span>
+                          <b>{variant.counts[product.id]} шт.</b>
                         </div>
-                        <div className="product-size-formula">
-                          <NumberField
-                            label="Толщина"
-                            value={product.nominalThickness || null}
-                            onChange={(value) => {
-                              const nominal = value ?? 0;
-                              updateProduct(product.id, { nominalThickness: nominal, cuttingThickness: nominal + thicknessAllowance });
-                            }}
-                            required
-                          />
-                          <span className="formula-times" aria-hidden="true">×</span>
-                          <NumberField
-                            label="Ширина"
-                            value={product.nominalWidth || null}
-                            onChange={(value) => {
-                              const nominal = value ?? 0;
-                              updateProduct(product.id, { nominalWidth: nominal, cuttingWidth: nominal + widthAllowance });
-                            }}
-                            required
-                          />
-                          <strong className="formula-unit">мм</strong>
-                        </div>
-                        <details className="allowance-details">
-                          <summary>Припуски на обработку, если нужны</summary>
-                          <div className="mini-fields">
-                            <NumberField label="К толщине, мм" value={thicknessAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingThickness: product.nominalThickness + (value ?? 0) })} />
-                            <NumberField label="К ширине, мм" value={widthAllowance || null} onChange={(value) => updateProduct(product.id, { cuttingWidth: product.nominalWidth + (value ?? 0) })} />
-                          </div>
-                        </details>
-                        {variant && <span className="result-count">На чертеже: {variant.counts[product.id] || 0} шт.</span>}
-                      </div>
-                    );
-                  })}
-                  <button className="add-product-button" onClick={addProduct}>＋ Ещё одно сечение</button>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </section>
@@ -931,8 +925,8 @@ export function CalculatorApp() {
               <>
                 <div className="drawing-tabs">
                   <button className={drawingMode === "final" ? "active" : ""} onClick={() => setDrawingMode("final")}>Итог</button>
-                  <button className={drawingMode === "first" ? "active" : ""} onClick={() => setDrawingMode("first")}>1-й распил</button>
-                  <button className={drawingMode === "second" ? "active" : ""} onClick={() => setDrawingMode("second")}>2-й распил</button>
+                  <button className={drawingMode === "first" ? "active" : ""} onClick={() => setDrawingMode("first")}>Кромкообрезка</button>
+                  <button className={drawingMode === "second" ? "active" : ""} onClick={() => setDrawingMode("second")}>Многопил</button>
                 </div>
                 <div className="toolbar-actions">
                   <button aria-label="Уменьшить чертёж" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}>−</button>
@@ -946,10 +940,10 @@ export function CalculatorApp() {
             )}
           </div>
           <div className="drawing-stage">
-            {variant && equipment && diameter && finishedLength ? (
+            {variant && equipment && diameter ? (
               <TechnicalDrawing
                 diameter={diameter}
-                length={finishedLength}
+                length={calculationLength}
                 variant={variant}
                 products={products}
                 mode={drawingMode}

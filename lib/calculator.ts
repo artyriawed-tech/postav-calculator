@@ -7,6 +7,13 @@ export type Product = {
   cuttingWidth: number;
   color: "blue" | "amber";
   enabled: boolean;
+  priority?: "primary" | "byproduct";
+};
+
+export type SawLineStages = {
+  breakdownKerf: number;
+  multiripKerf: number;
+  edgingKerf: number;
 };
 
 export type Equipment = {
@@ -17,6 +24,7 @@ export type Equipment = {
   maxDiameter: number;
   secondaryEdging: boolean;
   multipleFeeds: boolean;
+  stages?: SawLineStages;
 };
 
 export type Defect = {
@@ -174,12 +182,19 @@ function generateCapLayerOptions(products: Product[], kerf: number, radius: numb
     }
   }
   const map = new Map(products.map((product) => [product.id, product]));
-  return [...new Map(options.map((ids) => [ids.join(","), ids])).values()].sort((a, b) => b.reduce((sum, id) => sum + map.get(id)!.nominalThickness * map.get(id)!.nominalWidth, 0) - a.reduce((sum, id) => sum + map.get(id)!.nominalThickness * map.get(id)!.nominalWidth, 0)).slice(0, 50);
+  const primaryArea = (ids: string[]) => ids.reduce((sum, id) => {
+    const product = map.get(id)!;
+    return product.priority === "primary" ? sum + product.nominalThickness * product.nominalWidth : sum;
+  }, 0);
+  const totalArea = (ids: string[]) => ids.reduce((sum, id) => sum + map.get(id)!.nominalThickness * map.get(id)!.nominalWidth, 0);
+  return [...new Map(options.map((ids) => [ids.join(","), ids])).values()]
+    .sort((a, b) => primaryArea(b) - primaryArea(a) || totalArea(b) - totalArea(a))
+    .slice(0, 50);
 }
 
-function buildCaps(layers: string[][], products: Product[], kerf: number, radius: number, cantHeight: number) {
+function buildCaps(layers: string[][], products: Product[], kerf: number, radius: number, cantHeight: number, cantKerf = kerf) {
   const map = new Map(products.map((product) => [product.id, product]));
-  let inner = cantHeight / 2 + kerf;
+  let inner = cantHeight / 2 + cantKerf;
   const pieces: Piece[] = [];
   for (let layer = 0; layer < layers.length; layer += 1) {
     const layerPieces = buildCapLayer(layers[layer], layer, inner, products, kerf, radius);
@@ -190,7 +205,7 @@ function buildCaps(layers: string[][], products: Product[], kerf: number, radius
   return pieces;
 }
 
-function generateCaps(products: Product[], kerf: number, radius: number, cantHeight: number) {
+function generateCaps(products: Product[], kerf: number, radius: number, cantHeight: number, cantKerf = kerf) {
   const map = new Map(products.map((product) => [product.id, product]));
   const minLayer = Math.min(...products.filter((product) => product.enabled).map((product) => product.cuttingThickness + kerf));
   const maxLayers = Math.min(8, Math.max(1, Math.ceil((radius - cantHeight / 2) / minLayer)));
@@ -199,10 +214,10 @@ function generateCaps(products: Product[], kerf: number, radius: number, cantHei
   while (stack.length) {
     const state = stack.pop()!;
     if (state.layers.length >= maxLayers || result.length >= 1500) continue;
-    const inner = cantHeight / 2 + kerf + state.layers.reduce((sum, layer) => sum + map.get(layer[0])!.cuttingThickness + kerf, 0);
-    for (const ids of generateCapLayerOptions(products, kerf, radius, inner)) {
+    const inner = cantHeight / 2 + cantKerf + state.layers.reduce((sum, layer) => sum + map.get(layer[0])!.cuttingThickness + kerf, 0);
+    for (const ids of [...generateCapLayerOptions(products, kerf, radius, inner)].reverse()) {
       const next = { layers: [...state.layers, ids] };
-      if (buildCaps(next.layers, products, kerf, radius, cantHeight)) {
+      if (buildCaps(next.layers, products, kerf, radius, cantHeight, cantKerf)) {
         result.push(next);
         stack.push(next);
       }
@@ -268,21 +283,26 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const products = input.products.filter((product) => product.enabled);
   const radius = diameter / 2;
   if (!Number.isFinite(diameter) || diameter <= 0 || !Number.isFinite(length) || length <= 0) return { status: "invalid", variants: [], error: "Проверьте диаметр и готовую длину досок." };
-  if (diameter > equipment.maxDiameter) return { status: "invalid", variants: [], error: `Диаметр ${diameter} мм превышает просвет «${equipment.name}» (${equipment.maxDiameter} мм).` };
-  if (!Number.isInteger(equipment.maxSaws) || equipment.maxSaws <= 0) return { status: "invalid", variants: [], error: "Количество пил должно быть целым числом больше нуля." };
-  if (!Number.isFinite(equipment.maxDiameter) || equipment.maxDiameter <= 0) return { status: "invalid", variants: [], error: "Максимальный просвет оборудования должен быть больше нуля." };
+  if (equipment.maxDiameter > 0 && diameter > equipment.maxDiameter) return { status: "invalid", variants: [], error: `Диаметр ${diameter} мм превышает просвет «${equipment.name}» (${equipment.maxDiameter} мм).` };
+  if (!Number.isInteger(equipment.maxSaws) || equipment.maxSaws < 0) return { status: "invalid", variants: [], error: "Количество пил не может быть отрицательным." };
+  if (!Number.isFinite(equipment.maxDiameter) || equipment.maxDiameter < 0) return { status: "invalid", variants: [], error: "Максимальный просвет оборудования не может быть отрицательным." };
   if (!products.length) return { status: "invalid", variants: [], error: "Включите хотя бы один размер доски." };
   for (const product of products) {
     const values = [product.nominalThickness, product.nominalWidth, product.cuttingThickness, product.cuttingWidth];
     if (values.some((value) => !Number.isFinite(value) || value <= 0)) return { status: "invalid", variants: [], error: `Проверьте размеры изделия «${product.name}»: все значения должны быть больше нуля.` };
     if (product.cuttingThickness < product.nominalThickness || product.cuttingWidth < product.nominalWidth) return { status: "invalid", variants: [], error: `Размер распила «${product.name}» не может быть меньше готового размера ${product.nominalThickness}×${product.nominalWidth} мм.` };
   }
-  if (equipment.kerf <= 0) return { status: "invalid", variants: [], error: "Ширина пропила должна быть больше нуля." };
+  const breakdownKerf = equipment.stages?.breakdownKerf ?? equipment.kerf;
+  const mainKerf = equipment.stages?.multiripKerf ?? equipment.kerf;
+  const edgingKerf = equipment.stages?.edgingKerf ?? equipment.kerf;
+  if ([breakdownKerf, mainKerf, edgingKerf].some((kerf) => !Number.isFinite(kerf) || kerf <= 0)) return { status: "invalid", variants: [], error: "Ширина каждого пропила должна быть больше нуля." };
   const suppliedDefects = input.defects || (input.defect ? [input.defect] : []);
   if (suppliedDefects.some((defect) => defect.enabled && (!Number.isFinite(defect.depth) || defect.depth < 0 || defect.depth >= radius))) return { status: "invalid", variants: [], error: "Глубина каждого дефекта должна быть от 0 до радиуса бревна." };
   const defects = suppliedDefects.filter((defect) => defect.enabled && defect.depth > 0);
 
-  const heights = [...new Set(products.map((product) => product.cuttingWidth))].filter((height) => height <= diameter);
+  const primaryProducts = products.filter((product) => product.priority === "primary");
+  const rowProducts = primaryProducts.length ? primaryProducts : products;
+  const heights = [...new Set(rowProducts.map((product) => product.cuttingWidth))].filter((height) => height <= diameter);
   const variants: Variant[] = [];
   // `length` — готовая длина продукции. Припуск и фактическая длина бревна
   // передаются отдельно; значения по умолчанию сохраняют совместимость со
@@ -296,20 +316,20 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (logLength / 1000);
 
   for (const cantHeight of heights) {
-    const rows = generateRows(products, equipment.kerf, radius, cantHeight);
-    const caps = generateCaps(products, equipment.kerf, radius, cantHeight);
+    const rows = generateRows(rowProducts, mainKerf, radius, cantHeight);
+    const caps = generateCaps(products, edgingKerf, radius, cantHeight, breakdownKerf);
     for (const row of rows) {
       if (!row.ids.length) continue;
-      const rowPieces = buildCenteredRow(row.ids, products, equipment.kerf, radius, cantHeight);
+      const rowPieces = buildCenteredRow(row.ids, products, mainKerf, radius, cantHeight);
       if (!rowPieces) continue;
       for (const cap of caps) {
-        const capPieces = buildCaps(cap.layers, products, equipment.kerf, radius, cantHeight);
+        const capPieces = buildCaps(cap.layers, products, edgingKerf, radius, cantHeight, breakdownKerf);
         if (!capPieces) continue;
         const basePieces = [...rowPieces, ...capPieces];
         const secondaryCount = basePieces.filter((piece) => piece.secondary).length;
         if (secondaryCount && !equipment.secondaryEdging) continue;
         const mainSawCount = rowPieces.length + 1;
-        const feeds = Math.max(1, Math.ceil(mainSawCount / equipment.maxSaws));
+        const feeds = equipment.maxSaws > 0 ? Math.max(1, Math.ceil(mainSawCount / equipment.maxSaws)) : 1;
         if (feeds > 1 && !equipment.multipleFeeds) continue;
         for (const offset of candidateOffsets(defects, basePieces, radius)) {
           const pieces = shiftedPieces(basePieces, offset.x, offset.y);
@@ -327,8 +347,10 @@ export function calculate(input: { diameter: number; length: number; logLength?:
 
   const unique = new Map<string, Variant>();
   variants.forEach((variant) => unique.set(variant.signature, variant));
+  const primaryIds = new Set(primaryProducts.map((product) => product.id));
+  const primaryVolume = (variant: Variant) => products.reduce((sum, product) => primaryIds.has(product.id) ? sum + (variant.counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * length / 1e9 : sum, 0);
   const sorted = [...unique.values()].sort((a, b) =>
-    b.nominalVolume - a.nominalVolume || a.feeds - b.feeds || a.secondaryCount - b.secondaryCount || (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) || a.signature.localeCompare(b.signature)
+    primaryVolume(b) - primaryVolume(a) || b.nominalVolume - a.nominalVolume || a.feeds - b.feeds || a.secondaryCount - b.secondaryCount || (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) || a.signature.localeCompare(b.signature)
   );
   if (!sorted.length) return { status: "no-solution", variants: [], error: "Для этих размеров и оборудования допустимый раскрой не найден." };
   return { status: "ok", variants: sorted.slice(0, input.topN || 5) };
@@ -343,3 +365,38 @@ export const DEFAULT_EQUIPMENT: Equipment[] = [
   { id: "gang-1", name: "Многопил №1", maxSaws: 8, kerf: 3, maxDiameter: 500, secondaryEdging: true, multipleFeeds: true },
   { id: "band-1", name: "Ленточная линия", maxSaws: 1, kerf: 2.2, maxDiameter: 700, secondaryEdging: true, multipleFeeds: true },
 ];
+
+export const MILL_LINE: Equipment = {
+  id: "family-mill-line",
+  name: "Основная линия",
+  maxSaws: 0,
+  kerf: 4,
+  maxDiameter: 0,
+  secondaryEdging: true,
+  multipleFeeds: true,
+  stages: { breakdownKerf: 5, multiripKerf: 4, edgingKerf: 3.8 },
+};
+
+const assortment = [
+  [25, 50], [25, 100], [25, 150],
+  [30, 100], [30, 120], [30, 150],
+  [40, 100], [40, 150],
+  [50, 100], [50, 150], [50, 200],
+  [100, 100], [100, 150], [100, 200],
+  [150, 150], [150, 200],
+] as const;
+
+export const PRODUCT_CATALOG: Product[] = assortment.map(([thickness, width], index) => ({
+  id: `catalog-${thickness}x${width}`,
+  name: `${thickness} × ${width} мм`,
+  nominalThickness: thickness,
+  nominalWidth: width,
+  cuttingThickness: thickness,
+  cuttingWidth: width,
+  color: index % 2 === 0 ? "blue" : "amber",
+  enabled: false,
+  priority: "byproduct",
+}));
+
+// Папин список содержал Ø340 дважды. В интерфейсе оставляем уникальные размеры.
+export const LOG_DIAMETERS = [140, 160, 180, 200, 220, 240, 280, 300, 340, 360] as const;

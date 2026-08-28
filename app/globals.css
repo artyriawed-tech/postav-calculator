@@ -84,6 +84,54 @@ input::placeholder{color:#a0a3a4;font-weight:500}
   .modal-heading h2{font-size:21px}
 }
 
+/* Family mill workflow: choose a log, choose the main order, get the best fill. */
+.mill-line-card{padding:14px;border:1px solid #aeb1b2;border-radius:9px;background:#f1f1ef}
+.mill-line-card>strong{display:block;margin-bottom:11px;font-size:13px}
+.mill-line-card>p{margin:11px 0 0;color:#5d6061;font-size:10px;line-height:1.45}
+.mill-stages{display:grid;grid-template-columns:1fr 12px 1fr 12px 1.2fr;gap:4px;align-items:center}
+.mill-stages>span{min-width:0;padding:9px 6px;border:1px solid #c7c9ca;border-radius:6px;background:#fff;text-align:center}
+.mill-stages b,.mill-stages small{display:block}
+.mill-stages b{overflow:hidden;font-size:9px;text-overflow:ellipsis}
+.mill-stages small{margin-top:4px;color:#66696a;font-size:8px}
+.mill-stages i{color:#737677;font-style:normal;text-align:center}
+.input-prompt{display:block;margin-bottom:11px;font-size:12px}
+.diameter-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.diameter-grid button{min-height:40px;padding:6px 3px;border:1px solid #aeb1b2;border-radius:6px;background:#fff;color:#202223;font-size:12px;font-weight:800}
+.diameter-grid button.active{border-color:#202223;background:#202223;color:#fff}
+.manual-diameter{margin-top:12px;padding-top:11px;border-top:1px solid #d5d7d8}
+.manual-diameter label span,.log-extra-details label span{display:block;margin-bottom:6px;color:#56595a;font-size:10px;font-weight:700}
+.manual-diameter input,.log-extra-details input{width:100%;min-height:43px;padding:9px 10px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;font-size:15px;font-weight:800}
+.log-extra-details{margin-top:11px;padding-top:10px;border-top:1px solid #d5d7d8}
+.log-extra-details summary{cursor:pointer;color:#4f5253;font-size:10px;font-weight:800}
+.log-extra-details label{display:block;margin-top:10px}
+.catalog-picker>strong{font-size:13px}
+.catalog-picker>p{margin:5px 0 12px;color:#626566;font-size:10px;line-height:1.4}
+.catalog-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.catalog-grid button{min-height:43px;padding:8px 4px;border:1px solid #aeb1b2;border-radius:6px;background:#fff;color:#202223;font-size:11px;font-weight:800}
+.catalog-grid button:hover,.catalog-grid button:focus-visible{border-color:#202223;background:#ececea;outline:none}
+.selected-order-card{position:relative;padding:15px;border:1px solid #202223;border-radius:9px;background:#202223;color:#fff}
+.selected-order-card span,.selected-order-card strong{display:block}
+.selected-order-card span{color:#cfd1d1;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.selected-order-card strong{margin-top:5px;font-size:20px}
+.selected-order-card button{position:absolute;right:12px;top:12px;padding:4px;border:0;background:transparent;color:#d5d7d8;font-size:9px;text-decoration:underline;text-underline-offset:3px}
+.byproduct-toggle{display:grid;grid-template-columns:20px 1fr;gap:9px;margin-top:10px;padding:13px;border:1px solid #bfc2c3;border-radius:9px;background:#f2f2f0}
+.byproduct-toggle input{margin-top:2px;accent-color:#202223}
+.byproduct-toggle strong,.byproduct-toggle small{display:block}
+.byproduct-toggle strong{font-size:11px}
+.byproduct-toggle small{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}
+.order-result-list{margin-top:10px;padding:13px;border:1px solid #bfc2c3;border-radius:9px;background:#fff}
+.order-result-list>strong{display:block;margin-bottom:8px;font-size:11px}
+.order-result-list>div{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #e2e3e3;font-size:10px}
+.order-result-list>div.primary{font-size:12px}
+.order-result-list>div.primary span::after{content:"основной";margin-left:6px;padding:2px 5px;border-radius:9px;background:#e5e6e6;color:#555859;font-size:7px;font-weight:800;text-transform:uppercase}
+
+@media(max-width:900px){
+  .diameter-grid{grid-template-columns:repeat(5,1fr)}
+  .diameter-grid button{min-height:46px;font-size:13px}
+  .catalog-grid{grid-template-columns:repeat(3,1fr)}
+  .catalog-grid button{min-height:48px;font-size:12px}
+}
+
 /* Product entry: one clear production order instead of mixed mini-cards. */
 .workspace{grid-template-columns:390px minmax(620px,1fr)}
 .product-locked{padding:13px 14px;border-left:3px solid #878a8b;background:#efefed;color:#555859;font-size:11px;font-weight:700;line-height:1.5}

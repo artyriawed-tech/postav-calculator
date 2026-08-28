@@ -1,6 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculate, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS } from "../lib/calculator.ts";
+import { calculate, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+
+test("основной заказ 50×150 сохраняет максимум, а свободные зоны дают 25×100", () => {
+  const primaryId = "catalog-50x150";
+  const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId)!;
+  const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
+  const withByproducts = PRODUCT_CATALOG
+    .filter((product) => product.id === primaryId || (product.nominalThickness <= 50 && product.nominalWidth <= 150))
+    .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
+  const plain = calculate({ diameter: 340, length: 1000, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
+  const filled = calculate({ diameter: 340, length: 1000, products: withByproducts, equipment: MILL_LINE, topN: 1 });
+  assert.equal(plain.status, "ok");
+  assert.equal(filled.status, "ok");
+  assert.equal(filled.variants[0].counts[primaryId], plain.variants[0].counts[primaryId]);
+  assert.equal(filled.variants[0].counts["catalog-25x100"], 2);
+  assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
+});
+
+test("полезный добор не уменьшает основной заказ на всём каталоге диаметров", () => {
+  for (const diameter of [140, 180, 220, 280, 340, 360]) {
+    for (const primary of PRODUCT_CATALOG) {
+      const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
+      const withByproducts = PRODUCT_CATALOG
+        .filter((product) => product.id === primary.id || (product.nominalThickness <= primary.nominalThickness && product.nominalWidth <= primary.nominalWidth))
+        .map((product) => ({ ...product, enabled: true, priority: product.id === primary.id ? "primary" as const : "byproduct" as const }));
+      const plain = calculate({ diameter, length: 1000, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
+      if (plain.status !== "ok") continue;
+      const filled = calculate({ diameter, length: 1000, products: withByproducts, equipment: MILL_LINE, topN: 1 });
+      assert.equal(filled.status, "ok", `${diameter} мм, ${primary.name}`);
+      assert.equal(filled.variants[0].counts[primary.id] || 0, plain.variants[0].counts[primary.id] || 0, `${diameter} мм, ${primary.name}`);
+      assert.ok(filled.variants[0].nominalRecovery + 1e-9 >= plain.variants[0].nominalRecovery, `${diameter} мм, ${primary.name}`);
+    }
+  }
+});
 
 test("эталон Ø320 даёт 7 широких и 4 узких доски", () => {
   const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 5 });
