@@ -412,13 +412,13 @@ function TechnicalDrawing({
             ОБОРУДОВАНИЕ РАСЧЁТА
           </text>
           <text x="12" y="39" className="equipment-name">
-            БРУСОВАЛЬНЫЙ · 5 ММ
+            БРУСОВАЛЬНЫЙ · {format(equipment.stages?.breakdownKerf ?? equipment.kerf)} ММ
           </text>
           <text x="12" y="56" className="equipment-spec">
-            МНОГОПИЛ · 4 ММ
+            МНОГОПИЛ · {format(equipment.stages?.multiripKerf ?? equipment.kerf)} ММ
           </text>
           <text x="12" y="72" className="equipment-label">
-            КРОМКООБРЕЗНОЙ · 3,8 ММ
+            КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
           </text>
         </g>
         <line x1="14" y1="143" x2="546" y2="143" className="card-rule" />
@@ -448,6 +448,7 @@ export function CalculatorApp() {
   const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
+  const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
   const [equipmentDraft, setEquipmentDraft] = useState<Equipment | null>(null);
@@ -574,10 +575,14 @@ export function CalculatorApp() {
     setEquipmentDraft((item) => (item ? { ...item, ...patch } : item));
   const validEquipmentDraft =
     !!equipmentDraft &&
-    Number.isInteger(equipmentDraft.maxSaws) &&
-    positive(equipmentDraft.maxSaws) &&
-    positive(equipmentDraft.kerf) &&
-    positive(equipmentDraft.maxDiameter);
+    (equipmentDraft.stages
+      ? positive(equipmentDraft.stages.breakdownKerf) &&
+        positive(equipmentDraft.stages.multiripKerf) &&
+        positive(equipmentDraft.stages.edgingKerf)
+      : Number.isInteger(equipmentDraft.maxSaws) &&
+        positive(equipmentDraft.maxSaws) &&
+        positive(equipmentDraft.kerf) &&
+        positive(equipmentDraft.maxDiameter));
   const saveEquipment = () => {
     if (!equipmentDraft || !validEquipmentDraft) return;
     const index =
@@ -622,6 +627,7 @@ export function CalculatorApp() {
     setFinishedLength(null);
     setLengthAllowance(null);
     setIncludeByproducts(true);
+    setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
   };
@@ -770,17 +776,19 @@ export function CalculatorApp() {
                   <h3>Оборудование</h3>
                   <p>Настройки сохраняются на этом устройстве</p>
                 </div>
-                {equipment && <span className="ready-mark">Готово</span>}
               </div>
               {equipment ? (
                 <div className="mill-line-card">
-                  <strong>Линия настроена</strong>
+                  <div className="mill-line-heading">
+                    <strong>Линия распила</strong>
+                    <button onClick={editEquipment}>Изменить</button>
+                  </div>
                   <div className="mill-stages">
-                    <span><b>Брусовальный</b><small>пропил 5 мм</small></span>
+                    <span><b>Брусовальный</b><small>пропил {format(equipment.stages?.breakdownKerf ?? 5)} мм</small></span>
                     <i>→</i>
-                    <span><b>Многопил</b><small>пропил 4 мм</small></span>
+                    <span><b>Многопил</b><small>пропил {format(equipment.stages?.multiripKerf ?? 4)} мм</small></span>
                     <i>→</i>
-                    <span><b>Кромкообрезной</b><small>пропил 3,8 мм</small></span>
+                    <span><b>Кромкообрезной</b><small>пропил {format(equipment.stages?.edgingKerf ?? 3.8)} мм</small></span>
                   </div>
                   <p>Эти значения уже участвуют в каждом расчёте.</p>
                 </div>
@@ -795,7 +803,6 @@ export function CalculatorApp() {
                   <h3>Бревно</h3>
                   <p>Измеряем то бревно, которое сейчас пойдёт в распил</p>
                 </div>
-                {logReady && <span className="ready-mark">Готово</span>}
               </div>
               {!logAdded ? (
                 <button className="secondary-add-button" onClick={addLog}>＋ Добавить бревно</button>
@@ -807,20 +814,24 @@ export function CalculatorApp() {
                       <button
                         key={value}
                         className={diameter === value ? "active" : ""}
-                        onClick={() => setDiameter(value)}
+                        onClick={() => { setDiameter(value); setCustomDiameterOpen(false); }}
                       >
                         Ø{value / 10}
                       </button>
                     ))}
+                    <button
+                      className={customDiameterOpen ? "active" : ""}
+                      onClick={() => { setCustomDiameterOpen(true); setDiameter(null); }}
+                    >
+                      Мой
+                    </button>
                   </div>
-                  <div className="manual-diameter">
-                    <NumberField label="Другой диаметр, мм" value={diameter} onChange={setDiameter} required />
-                  </div>
+                  {customDiameterOpen && (
+                    <div className="manual-diameter">
+                      <NumberField label="Мой диаметр, мм" value={diameter} onChange={setDiameter} required />
+                    </div>
+                  )}
                   <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
-                  <details className="log-extra-details">
-                    <summary>Указать длину бревна — необязательно</summary>
-                    <NumberField label="Длина, мм" value={logLength} onChange={(value) => { setLogLength(value); setFinishedLength(value); }} />
-                  </details>
                   <div className="defect-panel">
                     <label className="defect-toggle">
                       <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
@@ -861,7 +872,6 @@ export function CalculatorApp() {
                   <h3>Что нужно получить</h3>
                   <p>Выберите основной размер заказа. Остаток программа заполнит полезной продукцией.</p>
                 </div>
-                {productsReady && orderReady && <span className="ready-mark">Готово</span>}
               </div>
 
               {!equipmentReady || !logReady ? (
@@ -980,38 +990,19 @@ export function CalculatorApp() {
           <section className="equipment-modal" onMouseDown={(event) => event.stopPropagation()}>
             <div className="modal-heading">
               <div>
-                <h2>{equipmentDraftMode === "create" ? "Добавить оборудование" : "Настройки оборудования"}</h2>
-                <p>Введите фактические ограничения станка. Пустые значения не сохраняются.</p>
+                <h2>Пропилы оборудования</h2>
+                <p>Измените только тот станок, на котором поменялась пила.</p>
               </div>
               <button aria-label="Закрыть" onClick={closeEquipment}>×</button>
             </div>
-            <div className="modal-grid">
-              <NumberField label="Количество пил" value={equipmentDraft.maxSaws || null} onChange={(value) => updateEquipmentDraft({ maxSaws: value ?? 0 })} required />
-              <NumberField label="Ширина пропила, мм" value={equipmentDraft.kerf || null} step={0.1} onChange={(value) => updateEquipmentDraft({ kerf: value ?? 0 })} required />
-              <NumberField label="Максимальный просвет, мм" value={equipmentDraft.maxDiameter || null} onChange={(value) => updateEquipmentDraft({ maxDiameter: value ?? 0 })} required />
+            <div className="modal-grid line-kerf-grid">
+              <NumberField label="Брусовальный, мм" value={equipmentDraft.stages?.breakdownKerf ?? null} step={0.1} onChange={(value) => updateEquipmentDraft({ stages: { ...equipmentDraft.stages!, breakdownKerf: value ?? 0 } })} required />
+              <NumberField label="Многопил, мм" value={equipmentDraft.stages?.multiripKerf ?? null} step={0.1} onChange={(value) => updateEquipmentDraft({ stages: { ...equipmentDraft.stages!, multiripKerf: value ?? 0 } })} required />
+              <NumberField label="Кромкообрезной, мм" value={equipmentDraft.stages?.edgingKerf ?? null} step={0.1} onChange={(value) => updateEquipmentDraft({ stages: { ...equipmentDraft.stages!, edgingKerf: value ?? 0 } })} required />
             </div>
-            <label className="check-row">
-              <input type="checkbox" checked={equipmentDraft.secondaryEdging} onChange={(event) => updateEquipmentDraft({ secondaryEdging: event.target.checked })} />
-              <div>
-                <strong>Есть отдельная обрезка боковых частей</strong>
-                <span>Позволяет получать дополнительную продукцию по краям бревна.</span>
-              </div>
-            </label>
-            <label className="check-row">
-              <input type="checkbox" checked={equipmentDraft.multipleFeeds} onChange={(event) => updateEquipmentDraft({ multipleFeeds: event.target.checked })} />
-              <div>
-                <strong>Можно пилить за несколько подач</strong>
-                <span>Если одного набора пил недостаточно, постав выполняется поэтапно.</span>
-              </div>
-            </label>
-            <label className="wide-field optional-name">
-              <span>Название для списка — необязательно</span>
-              <input value={equipmentDraft.name} placeholder="Например: основной многопил" onChange={(event) => updateEquipmentDraft({ name: event.target.value })} />
-            </label>
+            <p className="modal-note">Значения сохранятся на этом устройстве и сразу попадут в новый расчёт.</p>
             <div className="modal-actions spread">
-              {equipmentDraftMode === "edit" ? (
-                <button className="delete-button" onClick={deleteEquipment}>Удалить оборудование</button>
-              ) : <span />}
+              <span />
               <div>
                 <button className="quiet-button" onClick={closeEquipment}>Отмена</button>
                 <button className="calculate-button compact" onClick={saveEquipment} disabled={!validEquipmentDraft}>Сохранить</button>
