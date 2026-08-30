@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  auditVariantGeometry,
   calculate,
   calculateMaxRecovery,
   GOST_LENGTHS_M,
@@ -24,7 +23,7 @@ const format = (value: number, digits = 1) =>
     maximumFractionDigits: digits,
   });
 const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.working-circle{fill:none;stroke:#777b7c;stroke-width:1;stroke-dasharray:5 4}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
-const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.quality-shell{fill:#fff;stroke:#202223;stroke-width:1}.quality-status{fill:#202223}.quality-status-title{fill:#fff;font:800 10px Arial,sans-serif}.quality-status-note{fill:#cfd1d1;font:700 6.5px Arial,sans-serif}.quality-label{fill:#686b6c;font:700 6.5px Arial,sans-serif}.quality-value{fill:#202223;font:800 9px Arial,sans-serif}`;
+const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1.2}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.yield-proof-shell{fill:#f3f3f1;stroke:#202223;stroke-width:1.2}.yield-proof-label{fill:#686b6c;font:700 6.5px Arial,sans-serif}.yield-proof-value{fill:#202223;font:800 15px Arial,sans-serif}.yield-proof-note{fill:#202223;font:800 7.5px Arial,sans-serif}`;
 
 function NumberField({
   label,
@@ -118,6 +117,7 @@ function TechnicalDrawing({
   equipment,
   defects,
   edgeAllowance,
+  optimizationMode,
 }: {
   diameter: number;
   variant: Variant;
@@ -128,6 +128,7 @@ function TechnicalDrawing({
   equipment: Equipment;
   defects: Defect[];
   edgeAllowance: number;
+  optimizationMode: "primary" | "auto";
 }) {
   const center = 300;
   const radiusPx = 215;
@@ -178,8 +179,15 @@ function TechnicalDrawing({
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
     );
   const productDisplayRows = productRows.slice(0, 6);
-  const quality = auditVariantGeometry(diameter, variant, defects, edgeAllowance);
-  const activeDefectCount = defects.filter((defect) => defect.enabled && defect.depth > 0).length;
+  const cuttingFaceArea = products.reduce(
+    (sum, product) => sum + (variant.counts[product.id] || 0) * product.cuttingThickness * product.cuttingWidth,
+    0,
+  );
+  const workingFaceArea = Math.PI * Math.max(0, diameter / 2 - edgeAllowance) ** 2;
+  const faceFill = workingFaceArea > 0 ? cuttingFaceArea / workingFaceArea * 100 : 0;
+  const consideredSizes = optimizationMode === "auto"
+    ? PRODUCT_CATALOG.length
+    : products.filter((product) => product.enabled).length;
 
   return (
     <svg
@@ -395,7 +403,7 @@ function TechnicalDrawing({
           </text>
         </g>
         <g transform="translate(374 50)">
-          <rect width="172" height="108" rx="3" className="equipment-box" />
+          <rect width="172" height="180" rx="3" className="equipment-box" />
           <text x="11" y="19" className="equipment-label">
             ОБОРУДОВАНИЕ
           </text>
@@ -409,21 +417,21 @@ function TechnicalDrawing({
             КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
           </text>
           <text x="11" y="96" className="equipment-label">
-            ЗАПАС ОТ КРАЯ · {format(edgeAllowance)} ММ
+            {edgeAllowance > 0 ? `ЗАПАС ОТ КРАЯ · ${format(edgeAllowance)} ММ` : "ЗАПАС ОТ КРАЯ · НЕ ЗАДАН"}
           </text>
+          <line x1="11" y1="112" x2="161" y2="112" className="result-divider" />
+          <text x="11" y="131" className="equipment-label">РАСЧЁТ СЫРЬЯ ПО ГОСТ 2708-75</text>
+          <text x="11" y="149" className="equipment-spec">Ø{variant.gostDiameterCm} СМ × {format(variant.gostLengthM)} М</text>
+          <text x="11" y="168" className="equipment-name">ОБЪЁМ · {format(variant.logVolume, 3)} М³</text>
         </g>
-        <g transform="translate(14 170)">
-          <rect width="532" height="60" rx="3" className="quality-shell" />
-          <path d="M3 0 H132 V60 H3 Q0 60 0 57 V3 Q0 0 3 0 Z" className="quality-status" />
-          <text x="12" y="18" className="quality-status-title">КОНТРОЛЬ РАСЧЁТА</text>
-          <text x="12" y="35" className="quality-status-title">{quality.passed ? "ПРОЙДЕН" : "ТРЕБУЕТ ПРОВЕРКИ"}</text>
-          <text x="12" y="49" className="quality-status-note">ПРОВЕРЕНО АЛГОРИТМОМ</text>
-          <text x="146" y="15" className="quality-label">ГЕОМЕТРИЯ</text>
-          <text x="146" y="31" className="quality-value">{quality.overlapCount} ПЕРЕСЕЧЕНИЙ · {quality.outsideCount} ВЫХОДОВ ЗА ТОРЕЦ</text>
-          <text x="146" y="48" className="quality-label">КРАЙ: ФАКТ. {format(quality.minEdgeClearance)} ММ ≥ ТРЕБ. {format(edgeAllowance)} ММ</text>
-          <text x="390" y="15" className="quality-label">ДЕФЕКТЫ</text>
-          <text x="390" y="31" className="quality-value">{activeDefectCount} УЧТЕНО · {quality.defectCollisionCount} ПОПАДАНИЙ</text>
-          <text x="390" y="48" className="quality-label">ГОСТ: Ø{variant.gostDiameterCm} СМ × {format(variant.gostLengthM)} М = {format(variant.logVolume, 3)} М³</text>
+        <g transform="translate(14 158)">
+          <rect width="348" height="72" className="yield-proof-shell" />
+          <text x="12" y="18" className="yield-proof-label">ЗАПОЛНЕНИЕ РАБОЧЕГО ТОРЦА</text>
+          <text x="12" y="43" className="yield-proof-value">{format(faceFill)}%</text>
+          <text x="12" y="59" className="yield-proof-label">ЗАНЯТО ЗАГОТОВКАМИ</text>
+          <text x="116" y="18" className="yield-proof-label">{optimizationMode === "auto" ? "МАКСИМАЛЬНАЯ ВЫГОДА" : "ОСНОВНОЙ ЗАКАЗ + ДОБОР"}</text>
+          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "ВЫБРАН ЛУЧШИЙ НАЙДЕННЫЙ ПОСТАВ" : "ОСНОВНОЙ РАЗМЕР СОХРАНЁН"}</text>
+          <text x="116" y="54" className="yield-proof-label">ПРОВЕРЕНО РАЗМЕРОВ · {consideredSizes}</text>
         </g>
       </g>
     </svg>
@@ -440,6 +448,7 @@ export function CalculatorApp() {
   const [includeByproducts, setIncludeByproducts] = useState(true);
   const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
   const [edgeAllowance, setEdgeAllowance] = useState(3);
+  const [edgeAllowanceEnabled, setEdgeAllowanceEnabled] = useState(true);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
@@ -482,7 +491,8 @@ export function CalculatorApp() {
   const equipmentReady =
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
   const logReady = logAdded && positive(diameter) && positive(logLength);
-  const edgeAllowanceReady = Number.isFinite(edgeAllowance) && edgeAllowance >= 0 && !!diameter && edgeAllowance < diameter / 2;
+  const effectiveEdgeAllowance = edgeAllowanceEnabled ? edgeAllowance : 0;
+  const edgeAllowanceReady = !edgeAllowanceEnabled || (Number.isFinite(edgeAllowance) && edgeAllowance >= 0 && !!diameter && edgeAllowance < diameter / 2);
   const productsReady =
     products.some((product) => product.enabled) &&
     (orderMode === "auto" || products.some((product) => product.enabled && product.priority === "primary")) &&
@@ -501,7 +511,7 @@ export function CalculatorApp() {
     : !logAdded
       ? "Выберите диаметр бревна."
       : !logReady
-        ? "Выберите диаметр тонкого торца и длину бревна."
+        ? "Выберите диаметр тонкого торца."
         : !edgeAllowanceReady
           ? "Проверьте запас от края бревна."
         : products.length === 0
@@ -520,7 +530,7 @@ export function CalculatorApp() {
       length: calculationLength,
       logLength: calculationLogLength,
       lengthAllowance: lengthAllowance ?? 0,
-      edgeAllowance,
+      edgeAllowance: effectiveEdgeAllowance,
       equipment,
       defects,
       topN: 1,
@@ -528,7 +538,7 @@ export function CalculatorApp() {
     if (orderMode !== "auto") return calculate({ ...common, products });
 
     return calculateMaxRecovery(common);
-  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, edgeAllowance, products, defects, missingMessage, orderMode]);
+  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, effectiveEdgeAllowance, products, defects, missingMessage, orderMode]);
   const variant = result.variants[0];
 
   const addEquipment = () => {
@@ -595,6 +605,7 @@ export function CalculatorApp() {
     setDiameter(null);
     setLogLength(4000);
     setEdgeAllowance(3);
+    setEdgeAllowanceEnabled(true);
     setDefects([]);
   };
   const removeLog = () => {
@@ -602,6 +613,7 @@ export function CalculatorApp() {
     setDiameter(null);
     setLogLength(4000);
     setEdgeAllowance(3);
+    setEdgeAllowanceEnabled(true);
     setDefects([]);
   };
   const resetCalculation = () => {
@@ -612,6 +624,7 @@ export function CalculatorApp() {
     setIncludeByproducts(true);
     setOrderMode(null);
     setEdgeAllowance(3);
+    setEdgeAllowanceEnabled(true);
     setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
@@ -625,12 +638,16 @@ export function CalculatorApp() {
     setOrderMode("auto");
     setProducts(PRODUCT_CATALOG.map((product) => ({ ...product, enabled: true, priority: "byproduct" })));
   };
+  const selectPrimaryMode = () => {
+    if (orderMode === "primary") return;
+    setOrderMode("primary");
+    setProducts([]);
+  };
   const changeByproducts = (enabled: boolean) => {
     setIncludeByproducts(enabled);
     const primary = products.find((product) => product.priority === "primary");
     if (primary) setProducts(productsForOrder(primary.id, enabled));
   };
-  const addProduct = () => setProducts([]);
   const updateProduct = (id: string, patch: Partial<Product>) =>
     setProducts((items) =>
       items.map((item) => {
@@ -645,9 +662,8 @@ export function CalculatorApp() {
         };
       }),
     );
-  const removeProduct = () => {
+  const chooseAnotherPrimaryProduct = () => {
     setProducts([]);
-    setOrderMode(null);
   };
 
   const toggleDefects = (enabled: boolean) =>
@@ -738,8 +754,10 @@ export function CalculatorApp() {
       ? { title: "Добавьте бревно", button: "Добавить бревно", action: addLog }
       : !logReady
         ? { title: "Заполните данные бревна", button: "", action: undefined }
+      : orderMode === null
+        ? { title: "Выберите цель расчёта", button: "", action: undefined }
       : products.length === 0
-        ? { title: "Выберите основной заказ", button: "", action: undefined }
+        ? { title: "Выберите размер заказа", button: "", action: undefined }
         : !productsReady || !orderReady
           ? { title: "Заполните данные продукции", button: "", action: undefined }
           : { title: "Проверьте исходные данные", button: "", action: undefined };
@@ -824,39 +842,28 @@ export function CalculatorApp() {
                     </div>
                   )}
                   <p className="field-help">Измеряйте тонкий торец без коры. До Ø20 см достаточно одного диаметра; крупнее — измерьте в двух направлениях и возьмите среднее.</p>
-                  <div className="log-length-panel">
-                    <div>
-                      <strong>Длина бревна</strong>
-                      <span>Номинальная длина без торцевого припуска 3–5 см. По умолчанию — 4 м.</span>
-                    </div>
-                    <select
-                      value={logLength ?? ""}
-                      aria-label="Длина бревна"
-                      onChange={(event) => setLogLength(Number(event.target.value))}
-                    >
-                      {GOST_LENGTHS_M.map((value) => (
-                        <option key={value} value={value * 1000}>{format(value)} м</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="edge-allowance-panel">
-                    <div>
-                      <strong>Запас от края бревна</strong>
-                      <span>Углы досок не подходят к коре ближе этого расстояния</span>
-                    </div>
-                    <label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        value={edgeAllowance}
-                        aria-label="Запас от края бревна в миллиметрах"
-                        onChange={(event) => setEdgeAllowance(Number(event.target.value))}
-                      />
-                      <b>мм</b>
+                  <div className="log-safety-panel">
+                    <label className="defect-toggle">
+                      <input type="checkbox" checked={edgeAllowanceEnabled} onChange={(event) => setEdgeAllowanceEnabled(event.target.checked)} />
+                      <div>
+                        <strong>Оставить запас от коры</strong>
+                        <span>Углы досок не подойдут к краю бревна ближе заданного расстояния</span>
+                      </div>
                     </label>
-                  </div>
-                  <div className="defect-panel">
+                    {edgeAllowanceEnabled && (
+                      <label className="edge-allowance-input">
+                        <span>Запас</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          value={edgeAllowance}
+                          aria-label="Запас от края бревна в миллиметрах"
+                          onChange={(event) => setEdgeAllowance(Number(event.target.value))}
+                        />
+                        <b>мм</b>
+                      </label>
+                    )}
                     <label className="defect-toggle">
                       <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
                       <div>
@@ -886,6 +893,21 @@ export function CalculatorApp() {
                       </div>
                     )}
                   </div>
+                  <details className="log-extra-details">
+                    <summary>Дополнительно · расчёт по длине {format((logLength ?? 4000) / 1000)} м</summary>
+                    <label>
+                      <span>Длина нужна только для процента выхода по ГОСТ. Обычно оставляйте 4 м.</span>
+                      <select
+                        value={logLength ?? ""}
+                        aria-label="Длина бревна"
+                        onChange={(event) => setLogLength(Number(event.target.value))}
+                      >
+                        {GOST_LENGTHS_M.map((value) => (
+                          <option key={value} value={value * 1000}>{format(value)} м</option>
+                        ))}
+                      </select>
+                    </label>
+                  </details>
                 </div>
               )}
             </section>
@@ -894,7 +916,7 @@ export function CalculatorApp() {
               <div className="section-title with-state">
                 <div>
                   <h3>Что нужно получить</h3>
-                  <p>Выберите основной размер заказа. Остаток программа заполнит полезной продукцией.</p>
+                  <p>Сначала выберите цель: максимум выгоды или выполнение конкретного заказа.</p>
                 </div>
               </div>
 
@@ -902,34 +924,40 @@ export function CalculatorApp() {
                 <div className="product-locked">
                   Сначала выберите диаметр бревна.
                 </div>
-              ) : products.length === 0 ? (
-                <div className="catalog-picker">
-                  <button className="auto-yield-button" onClick={selectAutomaticYield}>
-                    <span>
-                      <strong>Рассчитать максимум выхода</strong>
-                      <small>Программа сама подберёт размеры и заполнит свободные места</small>
-                    </span>
-                    <b>Рассчитать →</b>
-                  </button>
-                  <div className="catalog-divider"><span>или</span></div>
-                  <strong>Основной заказ</strong>
-                  <p>Какой размер нужно получить в первую очередь?</p>
-                  <div className="catalog-grid">
-                    {PRODUCT_CATALOG.map((product) => (
-                      <button key={product.id} onClick={() => selectPrimaryProduct(product.id)}>
-                        {product.nominalThickness} × {product.nominalWidth}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               ) : (
                 <>
-                  <div className={`selected-order-card ${orderMode === "auto" ? "automatic" : ""}`}>
-                    <span>{orderMode === "auto" ? "Режим расчёта" : "Основной заказ"}</span>
-                    <strong>{orderMode === "auto" ? "Максимум полезного выхода" : products.find((product) => product.priority === "primary")?.name}</strong>
-                    <button onClick={() => removeProduct()}>Изменить</button>
+                  <div className="calculation-mode-switch" role="group" aria-label="Цель расчёта">
+                    <button className={orderMode === "auto" ? "active" : ""} onClick={selectAutomaticYield}>
+                      <strong>Максимальная выгода</strong>
+                      <small>Программа сама подберёт размеры</small>
+                    </button>
+                    <button className={orderMode === "primary" ? "active" : ""} onClick={selectPrimaryMode}>
+                      <strong>Выполнить заказ</strong>
+                      <small>Сначала нужный размер доски</small>
+                    </button>
                   </div>
-                  {orderMode === "primary" && (
+                  {orderMode === null && (
+                    <p className="mode-hint">Выберите, что сейчас важнее: максимальная выгода со всего бревна или конкретный заказ.</p>
+                  )}
+                  {orderMode === "primary" && products.length === 0 && (
+                    <div className="catalog-picker primary-catalog">
+                      <strong>Какой размер нужен в первую очередь?</strong>
+                      <div className="catalog-grid">
+                        {PRODUCT_CATALOG.map((product) => (
+                          <button key={product.id} onClick={() => selectPrimaryProduct(product.id)}>
+                            {product.nominalThickness} × {product.nominalWidth}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {orderMode === "primary" && products.length > 0 && (
+                    <div className="selected-primary-order">
+                      <span><small>Основной заказ</small><strong>{products.find((product) => product.priority === "primary")?.name}</strong></span>
+                      <button onClick={chooseAnotherPrimaryProduct}>Выбрать другой</button>
+                    </div>
+                  )}
+                  {orderMode === "primary" && products.length > 0 && (
                     <label className="byproduct-toggle">
                       <input type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
                       <span>
@@ -938,7 +966,7 @@ export function CalculatorApp() {
                       </span>
                     </label>
                   )}
-                  {variant && (
+                  {variant && products.length > 0 && (
                     <div className="order-result-list">
                       <strong>Получится с одного бревна</strong>
                       {[...products].filter((product) => (variant.counts[product.id] || 0) > 0).sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary")).map((product) => (
@@ -994,7 +1022,8 @@ export function CalculatorApp() {
                 svgRef={svgRef}
                 equipment={equipment}
                 defects={defects}
-                edgeAllowance={edgeAllowance}
+                edgeAllowance={effectiveEdgeAllowance}
+                optimizationMode={orderMode!}
               />
             ) : (
               <div className={`drawing-empty ${result.status === "no-solution" ? "error" : ""}`}>
