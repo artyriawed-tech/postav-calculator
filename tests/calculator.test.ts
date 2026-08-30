@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculate, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+import { calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+
+test("Ø140 с заказом 30×120 заполняет боковые зоны размером 25×50", () => {
+  const primaryId = "catalog-30x120";
+  const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId)!;
+  const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
+  const withByproducts = PRODUCT_CATALOG
+    .filter((product) => product.id === primaryId || (product.nominalThickness <= 30 && product.nominalWidth <= 120))
+    .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
+  const plain = calculate({ diameter: 140, length: 1000, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
+  const filled = calculate({ diameter: 140, length: 1000, products: withByproducts, equipment: MILL_LINE, topN: 1 });
+  assert.equal(plain.status, "ok");
+  assert.equal(filled.status, "ok");
+  assert.equal(filled.variants[0].counts[primaryId], 2);
+  assert.equal(filled.variants[0].counts["catalog-25x50"], 2);
+  assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
+});
+
+test("автоматический режим на каждом рабочем диаметре находит полезный раскрой", () => {
+  for (const diameter of LOG_DIAMETERS) {
+    const result = calculateMaxRecovery({ diameter, length: 1000, equipment: MILL_LINE, topN: 1 });
+    assert.equal(result.status, "ok", `Ø${diameter}`);
+    assert.ok(result.variants[0].pieces.length > 0, `Ø${diameter}`);
+    assert.ok(result.variants[0].nominalRecovery > 0, `Ø${diameter}`);
+  }
+});
 
 test("основной заказ 50×150 сохраняет максимум, а свободные зоны дают 25×100", () => {
   const primaryId = "catalog-50x150";
@@ -14,12 +39,12 @@ test("основной заказ 50×150 сохраняет максимум, �
   assert.equal(plain.status, "ok");
   assert.equal(filled.status, "ok");
   assert.equal(filled.variants[0].counts[primaryId], plain.variants[0].counts[primaryId]);
-  assert.equal(filled.variants[0].counts["catalog-25x100"], 2);
+  assert.ok((filled.variants[0].counts["catalog-25x100"] || 0) >= 2);
   assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
 });
 
 test("полезный добор не уменьшает основной заказ на всём каталоге диаметров", () => {
-  for (const diameter of [140, 180, 220, 280, 340, 360]) {
+  for (const diameter of LOG_DIAMETERS) {
     for (const primary of PRODUCT_CATALOG) {
       const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
       const withByproducts = PRODUCT_CATALOG

@@ -175,3 +175,47 @@ input::placeholder{color:#a0a3a4;font-weight:500}
   .product-size-formula{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr) 22px;gap:5px}
   .product-size-formula label input{font-size:15px}
 }
+
+/* Clear production hierarchy: equipment, order choice, and the detachable work card. */
+.mill-line-card{padding:16px;background:#f3f3f1}
+.mill-line-heading{margin-bottom:13px}
+.mill-line-heading strong{font-size:14px}
+.mill-line-heading button{min-height:34px;padding:7px 12px;border-color:#202223;background:#202223;color:#fff;font-size:11px}
+.mill-stages{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mill-stages>span{min-height:66px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px 7px;border-color:#b7babb}
+.mill-stages b{overflow:visible;font-size:10px;line-height:1.25;text-overflow:clip;white-space:normal}
+.mill-stages small{margin-top:6px;font-size:10px;font-weight:700}
+.boards-section{background:#f8f8f6}
+.boards-section .section-title{padding-bottom:13px;border-bottom:1px solid #d5d7d8}
+.catalog-picker{padding:14px;border:1px solid #bfc2c3;border-radius:9px;background:#fff}
+.auto-yield-button{width:100%;padding:15px;border:1px solid #202223;border-radius:8px;background:#202223;color:#fff;text-align:left}
+.auto-yield-button strong,.auto-yield-button span{display:block}
+.auto-yield-button strong{font-size:14px}
+.auto-yield-button span{margin-top:5px;color:#d5d7d8;font-size:10px;line-height:1.4}
+.catalog-divider{display:flex;align-items:center;gap:9px;margin:13px 0;color:#7a7d7e;font-size:9px;font-weight:800;text-transform:uppercase}
+.catalog-divider::before,.catalog-divider::after{content:"";height:1px;flex:1;background:#dedfdf}
+.selected-order-card.automatic{background:#353839;border-color:#353839}
+.diameter-grid button:last-child{font-size:10px;line-height:1.15}
+.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}
+.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}
+.recovery-box{fill:#202223}
+.result-divider{stroke:#202223;stroke-width:1.2}
+.card-metric{fill:#fff;font-family:Arial,Helvetica,sans-serif}
+.recovery-label{fill:#dfe1e1;font-size:8px;font-weight:700}
+.recovery-value{fill:#fff;font-size:9px;font-weight:800}
+.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}
+.equipment-label{fill:#6c7071;font-size:7.5px;font-weight:700}
+.equipment-name,.equipment-spec{fill:#343738;font-size:9px;font-weight:800}
+.setup-box{fill:#f7f7f5;stroke:#c7c9ca;stroke-width:1}
+.setup-title{fill:#1c1e1f;font-size:9px;font-weight:800}
+.setup-note{fill:#696c6d;font-size:7px;font-weight:700}
+.setup-value{fill:#1c1e1f;font-size:10px;font-weight:800}
+
+@media(max-width:900px){
+  .mill-line-card{padding:14px}
+  .mill-stages{gap:5px}
+  .mill-stages>span{min-height:70px;padding:9px 4px}
+  .mill-stages b{font-size:9px}
+  .mill-stages small{font-size:9px}
+  .catalog-picker{padding:12px}
+}

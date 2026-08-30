@@ -105,35 +105,45 @@ function buildCenteredRow(ids: string[], products: Product[], kerf: number, radi
   return pieces;
 }
 
-function generateRows(products: Product[], kerf: number, radius: number, cantHeight: number) {
+function generateRows(products: Product[], kerf: number, radius: number, cantHeight: number, objective: "primary" | "recovery" = "primary") {
   const eligible = products.filter((product) => product.enabled && product.cuttingWidth <= cantHeight);
+  if (!eligible.length) return [{ ids: [] }];
   const rows: RowState[] = [{ ids: [] }];
   const minSpan = Math.min(...eligible.map((product) => product.cuttingThickness + kerf));
   const maxPairs = Math.min(16, Math.max(1, Math.ceil(radius / minSpan)));
+  const map = new Map(products.map((product) => [product.id, product]));
+  const primaryArea = (ids: string[]) => ids.reduce((sum, id) => {
+    const product = map.get(id)!;
+    return product.priority === "primary" ? sum + product.nominalThickness * product.nominalWidth : sum;
+  }, 0);
+  const totalArea = (ids: string[]) => ids.reduce((sum, id) => {
+    const product = map.get(id)!;
+    return sum + product.nominalThickness * product.nominalWidth;
+  }, 0);
+  const rowWidth = (ids: string[]) => ids.reduce((sum, id) => sum + map.get(id)!.cuttingThickness, 0) + Math.max(0, ids.length - 1) * kerf;
+  const compare = (a: RowState, b: RowState) => objective === "recovery"
+    ? totalArea(b.ids) - totalArea(a.ids) || primaryArea(b.ids) - primaryArea(a.ids) || rowWidth(b.ids) - rowWidth(a.ids)
+    : primaryArea(b.ids) - primaryArea(a.ids) || totalArea(b.ids) - totalArea(a.ids) || rowWidth(b.ids) - rowWidth(a.ids);
+  const keepBest = (states: RowState[]) => [...new Map(states.map((state) => [state.ids.join(","), state])).values()]
+    .filter((state) => buildCenteredRow(state.ids, products, kerf, radius, cantHeight))
+    .sort(compare)
+    .slice(0, 80);
 
-  for (const center of eligible) {
-    const stack: RowState[] = [{ ids: [center.id] }];
-    while (stack.length) {
-      const state = stack.pop()!;
-      if (!buildCenteredRow(state.ids, products, kerf, radius, cantHeight)) continue;
-      rows.push(state);
-      if ((state.ids.length - 1) / 2 >= maxPairs) continue;
-      for (const pair of eligible) stack.push({ ids: [pair.id, ...state.ids, pair.id] });
-    }
+  let odd = eligible.map((center) => ({ ids: [center.id] }));
+  let even: RowState[] = [{ ids: [] }];
+  for (let depth = 0; depth <= maxPairs; depth += 1) {
+    const validOdd = keepBest(odd);
+    const validEven = depth === 0 ? [] : keepBest(even);
+    rows.push(...validOdd, ...validEven);
+    if (depth === maxPairs) break;
+    odd = validOdd.flatMap((state) => eligible.map((pair) => ({ ids: [pair.id, ...state.ids, pair.id] })));
+    even = (depth === 0 ? [{ ids: [] }] : validEven)
+      .flatMap((state) => eligible.map((pair) => ({ ids: [pair.id, ...state.ids, pair.id] })));
   }
 
-  const evenStack: RowState[] = [{ ids: [] }];
-  while (evenStack.length) {
-    const state = evenStack.pop()!;
-    if (state.ids.length && buildCenteredRow(state.ids, products, kerf, radius, cantHeight)) rows.push(state);
-    if (state.ids.length / 2 >= maxPairs) continue;
-    for (const pair of eligible) {
-      const next = { ids: [pair.id, ...state.ids, pair.id] };
-      if (buildCenteredRow(next.ids, products, kerf, radius, cantHeight)) evenStack.push(next);
-    }
-  }
-
-  return rows;
+  return [...new Map(rows.map((state) => [state.ids.join(","), state])).values()]
+    .sort(compare)
+    .slice(0, 160);
 }
 
 function buildCapLayer(ids: string[], layer: number, inner: number, products: Product[], kerf: number, radius: number) {
@@ -153,7 +163,7 @@ function buildCapLayer(ids: string[], layer: number, inner: number, products: Pr
   return pieces.every((piece) => rectFits(piece.x, piece.y, piece.width, piece.height, radius)) ? pieces : null;
 }
 
-function generateCapLayerOptions(products: Product[], kerf: number, radius: number, inner: number) {
+function generateCapLayerOptions(products: Product[], kerf: number, radius: number, inner: number, objective: "primary" | "recovery" = "primary") {
   const groups = new Map<number, Product[]>();
   products.filter((product) => product.enabled).forEach((product) => groups.set(product.cuttingThickness, [...(groups.get(product.cuttingThickness) || []), product]));
   const options: string[][] = [];
@@ -188,8 +198,10 @@ function generateCapLayerOptions(products: Product[], kerf: number, radius: numb
   }, 0);
   const totalArea = (ids: string[]) => ids.reduce((sum, id) => sum + map.get(id)!.nominalThickness * map.get(id)!.nominalWidth, 0);
   return [...new Map(options.map((ids) => [ids.join(","), ids])).values()]
-    .sort((a, b) => primaryArea(b) - primaryArea(a) || totalArea(b) - totalArea(a))
-    .slice(0, 50);
+    .sort((a, b) => objective === "recovery"
+      ? totalArea(b) - totalArea(a) || primaryArea(b) - primaryArea(a)
+      : primaryArea(b) - primaryArea(a) || totalArea(b) - totalArea(a))
+    .slice(0, 30);
 }
 
 function buildCaps(layers: string[][], products: Product[], kerf: number, radius: number, cantHeight: number, cantKerf = kerf) {
@@ -205,7 +217,7 @@ function buildCaps(layers: string[][], products: Product[], kerf: number, radius
   return pieces;
 }
 
-function generateCaps(products: Product[], kerf: number, radius: number, cantHeight: number, cantKerf = kerf) {
+function generateCaps(products: Product[], kerf: number, radius: number, cantHeight: number, cantKerf = kerf, objective: "primary" | "recovery" = "primary") {
   const map = new Map(products.map((product) => [product.id, product]));
   const minLayer = Math.min(...products.filter((product) => product.enabled).map((product) => product.cuttingThickness + kerf));
   const maxLayers = Math.min(8, Math.max(1, Math.ceil((radius - cantHeight / 2) / minLayer)));
@@ -213,9 +225,9 @@ function generateCaps(products: Product[], kerf: number, radius: number, cantHei
   const stack: CapState[] = [{ layers: [] }];
   while (stack.length) {
     const state = stack.pop()!;
-    if (state.layers.length >= maxLayers || result.length >= 1500) continue;
+    if (state.layers.length >= maxLayers || result.length >= 300) continue;
     const inner = cantHeight / 2 + cantKerf + state.layers.reduce((sum, layer) => sum + map.get(layer[0])!.cuttingThickness + kerf, 0);
-    for (const ids of [...generateCapLayerOptions(products, kerf, radius, inner)].reverse()) {
+    for (const ids of [...generateCapLayerOptions(products, kerf, radius, inner, objective)].reverse()) {
       const next = { layers: [...state.layers, ids] };
       if (buildCaps(next.layers, products, kerf, radius, cantHeight, cantKerf)) {
         result.push(next);
@@ -223,7 +235,19 @@ function generateCaps(products: Product[], kerf: number, radius: number, cantHei
       }
     }
   }
-  return result;
+  const primaryArea = (state: CapState) => state.layers.flat().reduce((sum, id) => {
+    const product = map.get(id)!;
+    return product.priority === "primary" ? sum + product.nominalThickness * product.nominalWidth : sum;
+  }, 0);
+  const totalArea = (state: CapState) => state.layers.flat().reduce((sum, id) => {
+    const product = map.get(id)!;
+    return sum + product.nominalThickness * product.nominalWidth;
+  }, 0);
+  return result
+    .sort((a, b) => objective === "recovery"
+      ? totalArea(b) - totalArea(a) || primaryArea(b) - primaryArea(a)
+      : primaryArea(b) - primaryArea(a) || totalArea(b) - totalArea(a))
+    .slice(0, 80);
 }
 
 function countProducts(pieces: Piece[]) {
@@ -278,7 +302,7 @@ function candidateOffsets(defects: Defect[], pieces: Piece[], radius: number) {
   return xs.flatMap((x) => ys.map((y) => ({ x, y }))).sort((a, b) => Math.abs(a.x) + Math.abs(a.y) - Math.abs(b.x) - Math.abs(b.y));
 }
 
-export function calculate(input: { diameter: number; length: number; logLength?: number; lengthAllowance?: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number }): Calculation {
+export function calculate(input: { diameter: number; length: number; logLength?: number; lengthAllowance?: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number; objective?: "primary" | "recovery" }): Calculation {
   const { diameter, length, equipment } = input;
   const products = input.products.filter((product) => product.enabled);
   const radius = diameter / 2;
@@ -301,7 +325,10 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const defects = suppliedDefects.filter((defect) => defect.enabled && defect.depth > 0);
 
   const primaryProducts = products.filter((product) => product.priority === "primary");
-  const rowProducts = primaryProducts.length ? primaryProducts : products;
+  // Побочные размеры тоже участвуют в центральном ряду. Раньше они могли
+  // заполнять только верх и низ, поэтому у небольших брёвен оставались пустые
+  // боковые зоны даже при включённом полезном доборе.
+  const rowProducts = products;
   const heights = [...new Set(rowProducts.map((product) => product.cuttingWidth))].filter((height) => height <= diameter);
   const variants: Variant[] = [];
   // `length` — готовая длина продукции. Припуск и фактическая длина бревна
@@ -316,8 +343,8 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (logLength / 1000);
 
   for (const cantHeight of heights) {
-    const rows = generateRows(rowProducts, mainKerf, radius, cantHeight);
-    const caps = generateCaps(products, edgingKerf, radius, cantHeight, breakdownKerf);
+    const rows = generateRows(rowProducts, mainKerf, radius, cantHeight, input.objective);
+    const caps = generateCaps(products, edgingKerf, radius, cantHeight, breakdownKerf, input.objective);
     for (const row of rows) {
       if (!row.ids.length) continue;
       const rowPieces = buildCenteredRow(row.ids, products, mainKerf, radius, cantHeight);
@@ -349,8 +376,9 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   variants.forEach((variant) => unique.set(variant.signature, variant));
   const primaryIds = new Set(primaryProducts.map((product) => product.id));
   const primaryVolume = (variant: Variant) => products.reduce((sum, product) => primaryIds.has(product.id) ? sum + (variant.counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * length / 1e9 : sum, 0);
-  const sorted = [...unique.values()].sort((a, b) =>
-    primaryVolume(b) - primaryVolume(a) || b.nominalVolume - a.nominalVolume || a.feeds - b.feeds || a.secondaryCount - b.secondaryCount || (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) || a.signature.localeCompare(b.signature)
+  const sorted = [...unique.values()].sort((a, b) => input.objective === "recovery"
+    ? b.nominalVolume - a.nominalVolume || a.feeds - b.feeds || a.secondaryCount - b.secondaryCount || (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) || a.signature.localeCompare(b.signature)
+    : primaryVolume(b) - primaryVolume(a) || b.nominalVolume - a.nominalVolume || a.feeds - b.feeds || a.secondaryCount - b.secondaryCount || (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) || a.signature.localeCompare(b.signature)
   );
   if (!sorted.length) return { status: "no-solution", variants: [], error: "Для этих размеров и оборудования допустимый раскрой не найден." };
   return { status: "ok", variants: sorted.slice(0, input.topN || 5) };
@@ -397,6 +425,43 @@ export const PRODUCT_CATALOG: Product[] = assortment.map(([thickness, width], in
   enabled: false,
   priority: "byproduct",
 }));
+
+export function calculateMaxRecovery(input: {
+  diameter: number;
+  length: number;
+  logLength?: number;
+  lengthAllowance?: number;
+  equipment: Equipment;
+  defects?: Defect[];
+  topN?: number;
+}): Calculation {
+  const anchors = [...new Map(
+    [...PRODUCT_CATALOG]
+      .filter((product) => product.cuttingWidth <= input.diameter)
+      .sort((a, b) => a.nominalThickness - b.nominalThickness)
+      .map((product) => [product.nominalWidth, product]),
+  ).values()];
+  const variants = anchors.flatMap((anchor) => {
+    const family = PRODUCT_CATALOG
+      .filter((product) => product.nominalThickness <= anchor.nominalThickness && product.nominalWidth <= anchor.nominalWidth)
+      .map((product) => ({
+        ...product,
+        enabled: true,
+        priority: product.id === anchor.id ? "primary" as const : "byproduct" as const,
+      }));
+    const result = calculate({ ...input, products: family, objective: "recovery", topN: 1 });
+    return result.status === "ok" ? result.variants : [];
+  });
+  variants.sort((a, b) =>
+    b.nominalVolume - a.nominalVolume ||
+    a.feeds - b.feeds ||
+    a.secondaryCount - b.secondaryCount ||
+    (Math.abs(a.offsetX) + Math.abs(a.offsetY)) - (Math.abs(b.offsetX) + Math.abs(b.offsetY)) ||
+    a.signature.localeCompare(b.signature),
+  );
+  if (!variants.length) return { status: "no-solution", variants: [], error: "Для этого бревна полезный раскрой не найден." };
+  return { status: "ok", variants: variants.slice(0, input.topN || 1) };
+}
 
 // Папин список содержал Ø340 дважды. В интерфейсе оставляем уникальные размеры.
 export const LOG_DIAMETERS = [140, 160, 180, 200, 220, 240, 280, 300, 340, 360] as const;

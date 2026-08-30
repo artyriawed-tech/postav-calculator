@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
+  calculateMaxRecovery,
   LOG_DIAMETERS,
   MILL_LINE,
   PRODUCT_CATALOG,
@@ -20,16 +21,8 @@ const format = (value: number, digits = 1) =>
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-const sideName = (side: Defect["side"]) =>
-  side === "right"
-    ? "справа"
-    : side === "left"
-      ? "слева"
-      : side === "top"
-        ? "сверху"
-        : "снизу";
 const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
-const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#c7c9ca;stroke-width:1}.recovery-box{fill:#ececeb}.result-divider{stroke:#c7c9ca;stroke-width:1}.card-rule{stroke:#c7c9ca;stroke-width:1}.card-label{fill:#56595a;font:700 9px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 11px Arial,sans-serif}.card-note{fill:#56595a;font:700 8px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 29px Georgia,serif}.equipment-box{fill:#202223}.equipment-label{fill:#d2d4d4;font:700 8px Arial,sans-serif}.equipment-name{fill:#fff;font:800 12px Arial,sans-serif}.equipment-spec{fill:#fff;font:800 13px Arial,sans-serif}`;
+const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.setup-box{fill:#f7f7f5;stroke:#c7c9ca;stroke-width:1}.setup-title{fill:#1c1e1f;font:800 9px Arial,sans-serif}.setup-note{fill:#696c6d;font:700 7px Arial,sans-serif}.setup-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}`;
 
 function NumberField({
   label,
@@ -115,7 +108,6 @@ function defectRect(
 
 function TechnicalDrawing({
   diameter,
-  length,
   variant,
   products,
   mode,
@@ -123,10 +115,8 @@ function TechnicalDrawing({
   svgRef,
   equipment,
   defects,
-  sawCoordinates,
 }: {
   diameter: number;
-  length: number;
   variant: Variant;
   products: Product[];
   mode: DrawingMode;
@@ -134,7 +124,6 @@ function TechnicalDrawing({
   svgRef: React.RefObject<SVGSVGElement | null>;
   equipment: Equipment;
   defects: Defect[];
-  sawCoordinates: number[];
 }) {
   const center = 300;
   const radiusPx = 215;
@@ -183,21 +172,12 @@ function TechnicalDrawing({
       (product) =>
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
     );
-  const defectSummary = defects.length
-    ? defects
-        .map(
-          (defect) => `${sideName(defect.side)} ${format(defect.depth, 0)} мм`,
-        )
-        .join(", ")
-    : "не отмечены";
-  const sawSummary = sawCoordinates
-    .map((value) => `${value > 0 ? "+" : ""}${format(value)}`)
-    .join("  ");
+  const productDisplayRows = productRows.slice(0, 6);
 
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 600 850"
+      viewBox="0 0 600 830"
       style={{
         width: `${600 * zoom}px`,
         maxWidth: zoom <= 1 ? "100%" : "none",
@@ -211,7 +191,7 @@ function TechnicalDrawing({
           <circle cx={center} cy={center} r={radiusPx} />
         </clipPath>
       </defs>
-      <rect x="7" y="7" width="586" height="836" className="sheet" />
+      <rect x="7" y="7" width="586" height="816" className="sheet" />
       <circle cx={center} cy={center} r={radiusPx} className="log-circle" />
       {defects.map((defect, index) => {
         const rect = defectRect(defect, center, radiusPx, scale);
@@ -367,7 +347,7 @@ function TechnicalDrawing({
       )}
       <line x1="28" y1="612" x2="580" y2="612" className="cut-line" />
       <g transform="translate(20 632)">
-        <rect width="560" height="190" rx="2" className="card-shell" />
+        <rect width="560" height="176" rx="2" className="card-shell" />
         <rect width="560" height="38" className="card-header" />
         <text x="14" y="24" className="card-header-title">
           {mode === "final"
@@ -377,64 +357,50 @@ function TechnicalDrawing({
               : "МНОГОПИЛ"}
         </text>
         <text x="546" y="23" textAnchor="end" className="card-header-meta">
-          Ø{format(diameter, 0)} · {variant.pieces.length} ИЗДЕЛИЙ С БРЕВНА
+          Ø{format(diameter, 0)} · {variant.pieces.length} ШТ. С БРЕВНА
         </text>
         <g transform="translate(14 50)">
-          <rect width="342" height="80" rx="3" className="result-group" />
-          <path d="M3 0 H150 V80 H3 Q0 80 0 77 V3 Q0 0 3 0 Z" className="recovery-box" />
-          <line x1="150" y1="0" x2="150" y2="80" className="result-divider" />
-          <text x="12" y="18" className="card-label">
+          <rect width="348" height="108" rx="3" className="result-group" />
+          <path d="M3 0 H132 V108 H3 Q0 108 0 105 V3 Q0 0 3 0 Z" className="recovery-box" />
+          <line x1="132" y1="0" x2="132" y2="108" className="result-divider" />
+          <text x="12" y="18" className="recovery-label">
             ПОЛЕЗНЫЙ ВЫХОД
           </text>
-          <text x="12" y="51" className="card-metric">
+          <text x="12" y="52" className="card-metric">
             {format(variant.nominalRecovery)}%
           </text>
-          <text x="12" y="69" className="card-note">
-            основной заказ + полезная побочная продукция
+          <text x="12" y="76" className="recovery-label">
+            РАСПИЛЕНО / ОСТАТОК
           </text>
-          <text x="164" y="18" className="card-label">
+          <text x="12" y="94" className="recovery-value">
+            {format(variant.cuttingRecovery)}% / {format(variant.residualRecovery)}%
+          </text>
+          <text x="146" y="18" className="card-label">
             ПРОДУКЦИЯ
           </text>
-          <text x="164" y="38" className="card-value">
-            {productRows.slice(0, 2).map((row, index) => (
-              <tspan key={row} x="164" dy={index === 0 ? 0 : 17}>
+          <text x="146" y="35" className="card-value">
+            {productDisplayRows.map((row, index) => (
+              <tspan key={row} x="146" dy={index === 0 ? 0 : 14}>
                 {row}
               </tspan>
             ))}
           </text>
-          <text x="164" y="71" className="card-note">
-            Постав {format(variant.cantHeight, 0)} мм · дефекты: {defectSummary}
-          </text>
         </g>
-        <g transform="translate(370 50)">
-          <rect width="176" height="80" rx="3" className="equipment-box" />
-          <text x="12" y="19" className="equipment-label">
-            ОБОРУДОВАНИЕ РАСЧЁТА
+        <g transform="translate(374 50)">
+          <rect width="172" height="108" rx="3" className="equipment-box" />
+          <text x="11" y="19" className="equipment-label">
+            ОБОРУДОВАНИЕ
           </text>
-          <text x="12" y="39" className="equipment-name">
+          <text x="11" y="43" className="equipment-name">
             БРУСОВАЛЬНЫЙ · {format(equipment.stages?.breakdownKerf ?? equipment.kerf)} ММ
           </text>
-          <text x="12" y="56" className="equipment-spec">
+          <text x="11" y="67" className="equipment-spec">
             МНОГОПИЛ · {format(equipment.stages?.multiripKerf ?? equipment.kerf)} ММ
           </text>
-          <text x="12" y="72" className="equipment-label">
+          <text x="11" y="91" className="equipment-name">
             КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
           </text>
         </g>
-        <line x1="14" y1="143" x2="546" y2="143" className="card-rule" />
-        <text x="14" y="160" className="card-label">
-          НАСТРОЙКА ПИЛ ОТ ОСИ БРЕВНА, ММ
-        </text>
-        <text x="14" y="180" className="card-value">
-          {sawSummary || "Не требуется"}
-        </text>
-        <text x="546" y="160" textAnchor="end" className="card-label">
-          РАСПИЛЕНО / ОСТАТОК
-        </text>
-        <text x="546" y="180" textAnchor="end" className="card-value">
-          {format(variant.cuttingRecovery)}% /{" "}
-          {format(variant.residualRecovery)}%
-        </text>
       </g>
     </svg>
   );
@@ -448,6 +414,7 @@ export function CalculatorApp() {
   const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
+  const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
@@ -491,7 +458,8 @@ export function CalculatorApp() {
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
   const logReady = logAdded && positive(diameter);
   const productsReady =
-    products.some((product) => product.enabled && product.priority === "primary") &&
+    products.some((product) => product.enabled) &&
+    (orderMode === "auto" || products.some((product) => product.enabled && product.priority === "primary")) &&
     products.filter((product) => product.enabled).every(
       (product) =>
         positive(product.nominalThickness) &&
@@ -517,38 +485,22 @@ export function CalculatorApp() {
   const calculationLength = finishedLength ?? logLength ?? 1000;
   const calculationLogLength = logLength ?? calculationLength;
 
-  const result: Calculation = useMemo(
-    () =>
-      readyToCalculate && equipment
-        ? calculate({
-            diameter: diameter!,
-            length: calculationLength,
-            logLength: calculationLogLength,
-            lengthAllowance: lengthAllowance ?? 0,
-            products,
-            equipment,
-            defects,
-            topN: 1,
-          })
-        : { status: "invalid", variants: [], error: missingMessage },
-    [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, products, defects, missingMessage],
-  );
-  const variant = result.variants[0];
+  const result: Calculation = useMemo(() => {
+    if (!readyToCalculate || !equipment) return { status: "invalid", variants: [], error: missingMessage };
+    const common = {
+      diameter: diameter!,
+      length: calculationLength,
+      logLength: calculationLogLength,
+      lengthAllowance: lengthAllowance ?? 0,
+      equipment,
+      defects,
+      topN: 1,
+    };
+    if (orderMode !== "auto") return calculate({ ...common, products });
 
-  const sawCoordinates = useMemo(() => {
-    if (!variant || !equipment) return [];
-    const row = variant.pieces
-      .filter((piece) => piece.id.startsWith("row-"))
-      .sort((a, b) => a.x - b.x);
-    if (!row.length) return [];
-    return [
-      row[0].x - (equipment.stages?.multiripKerf ?? equipment.kerf) / 2,
-      ...row.slice(0, -1).map(
-        (piece, index) => (piece.x + piece.width + row[index + 1].x) / 2,
-      ),
-      row.at(-1)!.x + row.at(-1)!.width + (equipment.stages?.multiripKerf ?? equipment.kerf) / 2,
-    ];
-  }, [variant, equipment]);
+    return calculateMaxRecovery(common);
+  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, products, defects, missingMessage, orderMode]);
+  const variant = result.variants[0];
 
   const addEquipment = () => {
     setEquipmentDraft({
@@ -627,13 +579,20 @@ export function CalculatorApp() {
     setFinishedLength(null);
     setLengthAllowance(null);
     setIncludeByproducts(true);
+    setOrderMode(null);
     setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
   };
 
-  const selectPrimaryProduct = (id: string) =>
+  const selectPrimaryProduct = (id: string) => {
+    setOrderMode("primary");
     setProducts(productsForOrder(id, includeByproducts));
+  };
+  const selectAutomaticYield = () => {
+    setOrderMode("auto");
+    setProducts(PRODUCT_CATALOG.map((product) => ({ ...product, enabled: true, priority: "byproduct" })));
+  };
   const changeByproducts = (enabled: boolean) => {
     setIncludeByproducts(enabled);
     const primary = products.find((product) => product.priority === "primary");
@@ -654,7 +613,10 @@ export function CalculatorApp() {
         };
       }),
     );
-  const removeProduct = () => setProducts([]);
+  const removeProduct = () => {
+    setProducts([]);
+    setOrderMode(null);
+  };
 
   const toggleDefects = (enabled: boolean) =>
     setDefects(enabled ? [{ enabled: true, side: "right", depth: 0 }] : []);
@@ -678,7 +640,7 @@ export function CalculatorApp() {
       const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
       clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       clone.setAttribute("width", "1200");
-      clone.setAttribute("height", "1700");
+      clone.setAttribute("height", "1660");
       clone.style.transform = "none";
       const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
       style.textContent = EXPORT_SVG_STYLES;
@@ -696,7 +658,7 @@ export function CalculatorApp() {
       });
       const canvas = document.createElement("canvas");
       canvas.width = 1200;
-      canvas.height = 1700;
+      canvas.height = 1660;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("canvas");
       context.fillStyle = "#fff";
@@ -785,9 +747,7 @@ export function CalculatorApp() {
                   </div>
                   <div className="mill-stages">
                     <span><b>Брусовальный</b><small>пропил {format(equipment.stages?.breakdownKerf ?? 5)} мм</small></span>
-                    <i>→</i>
                     <span><b>Многопил</b><small>пропил {format(equipment.stages?.multiripKerf ?? 4)} мм</small></span>
-                    <i>→</i>
                     <span><b>Кромкообрезной</b><small>пропил {format(equipment.stages?.edgingKerf ?? 3.8)} мм</small></span>
                   </div>
                   <p>Эти значения уже участвуют в каждом расчёте.</p>
@@ -823,12 +783,12 @@ export function CalculatorApp() {
                       className={customDiameterOpen ? "active" : ""}
                       onClick={() => { setCustomDiameterOpen(true); setDiameter(null); }}
                     >
-                      Мой
+                      ✎ Ввести
                     </button>
                   </div>
                   {customDiameterOpen && (
                     <div className="manual-diameter">
-                      <NumberField label="Мой диаметр, мм" value={diameter} onChange={setDiameter} required />
+                      <NumberField label="Диаметр тонкого торца, мм" value={diameter} onChange={setDiameter} required />
                     </div>
                   )}
                   <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
@@ -880,6 +840,11 @@ export function CalculatorApp() {
                 </div>
               ) : products.length === 0 ? (
                 <div className="catalog-picker">
+                  <button className="auto-yield-button" onClick={selectAutomaticYield}>
+                    <strong>Максимум полезного выхода</strong>
+                    <span>Без основного заказа — программа сама выберет лучшую комбинацию</span>
+                  </button>
+                  <div className="catalog-divider"><span>или</span></div>
                   <strong>Основной заказ</strong>
                   <p>Какой размер нужно получить в первую очередь?</p>
                   <div className="catalog-grid">
@@ -892,18 +857,20 @@ export function CalculatorApp() {
                 </div>
               ) : (
                 <>
-                  <div className="selected-order-card">
-                    <span>Основной заказ</span>
-                    <strong>{products.find((product) => product.priority === "primary")?.name}</strong>
-                    <button onClick={() => removeProduct()}>Изменить размер</button>
+                  <div className={`selected-order-card ${orderMode === "auto" ? "automatic" : ""}`}>
+                    <span>{orderMode === "auto" ? "Режим расчёта" : "Основной заказ"}</span>
+                    <strong>{orderMode === "auto" ? "Максимум полезного выхода" : products.find((product) => product.priority === "primary")?.name}</strong>
+                    <button onClick={() => removeProduct()}>Изменить</button>
                   </div>
-                  <label className="byproduct-toggle">
-                    <input type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
-                    <span>
-                      <strong>Заполнять свободные места</strong>
-                      <small>Добавлять меньшие размеры из ассортимента, если они повышают полезный выход.</small>
-                    </span>
-                  </label>
+                  {orderMode === "primary" && (
+                    <label className="byproduct-toggle">
+                      <input type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
+                      <span>
+                        <strong>Заполнять свободные места</strong>
+                        <small>Добавлять меньшие размеры из ассортимента, если они повышают полезный выход.</small>
+                      </span>
+                    </label>
+                  )}
                   {variant && (
                     <div className="order-result-list">
                       <strong>Получится с одного бревна</strong>
@@ -953,7 +920,6 @@ export function CalculatorApp() {
             {variant && equipment && diameter ? (
               <TechnicalDrawing
                 diameter={diameter}
-                length={calculationLength}
                 variant={variant}
                 products={products}
                 mode={drawingMode}
@@ -961,7 +927,6 @@ export function CalculatorApp() {
                 svgRef={svgRef}
                 equipment={equipment}
                 defects={defects}
-                sawCoordinates={sawCoordinates}
               />
             ) : (
               <div className={`drawing-empty ${result.status === "no-solution" ? "error" : ""}`}>
