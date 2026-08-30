@@ -807,11 +807,11 @@ export function CalculatorApp() {
                       <NumberField label="Диаметр тонкого торца, мм" value={diameter} onChange={setDiameter} required />
                     </div>
                   )}
-                  <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
+                  <p className="field-help">Измеряйте тонкий торец без коры. До Ø20 см достаточно одного диаметра; крупнее — измерьте в двух направлениях и возьмите среднее.</p>
                   <div className="log-length-panel">
                     <div>
                       <strong>Длина бревна</strong>
-                      <span>Нужна для объёма сырья по ГОСТ. По умолчанию — 4 м.</span>
+                      <span>Номинальная длина без торцевого припуска 3–5 см. По умолчанию — 4 м.</span>
                     </div>
                     <select
                       value={logLength ?? ""}

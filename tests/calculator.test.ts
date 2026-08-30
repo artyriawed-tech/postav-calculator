@@ -23,6 +23,21 @@ test("кубатурник содержит каждую рабочую пару
   }
 });
 
+test("ручной диаметр округляется к чётному классу по правилам обмера круглого леса", () => {
+  assert.equal(gost2708Volume(139, 4000), null);
+  assert.equal(gost2708Volume(149, 4000)?.diameterCm, 14);
+  assert.equal(gost2708Volume(150, 4000)?.diameterCm, 16);
+  assert.equal(gost2708Volume(169, 4000)?.diameterCm, 16);
+  assert.equal(gost2708Volume(170, 4000)?.diameterCm, 18);
+  assert.equal(gost2708Volume(150, 4000)?.volume, 0.095);
+});
+
+test("четвертные длины пиловочника берутся из таблицы ГОСТ без интерполяции", () => {
+  assert.equal(gost2708Volume(140, 3250)?.volume, 0.057);
+  assert.equal(gost2708Volume(240, 4750)?.volume, 0.250);
+  assert.equal(gost2708Volume(360, 6250)?.volume, 0.770);
+});
+
 test("Ø140 с запасом 3 мм безопасно добирает 25×100 вокруг заказа 30×120", () => {
   const primaryId = "catalog-30x120";
   const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId)!;
@@ -64,6 +79,38 @@ test("автоматический режим на каждом рабочем �
     for (const piece of result.variants[0].pieces) {
       for (const x of [piece.x, piece.x + piece.width]) for (const y of [piece.y, piece.y + piece.height]) {
         assert.ok(x * x + y * y <= workingRadiusSquared + 1e-6, `Ø${diameter}: угол продукции вошёл в запас от края`);
+      }
+    }
+    const variant = result.variants[0];
+    const row = variant.pieces.filter((piece) => piece.id.startsWith("row-")).sort((a, b) => a.x - b.x);
+    for (let index = 1; index < row.length; index += 1) {
+      assert.ok(row[index].x - (row[index - 1].x + row[index - 1].width) >= MILL_LINE.stages!.multiripKerf - 1e-7, `Ø${diameter}: не учтён пропил многопила`);
+    }
+    const capGroups = new Map<string, typeof variant.pieces>();
+    for (const piece of variant.pieces.filter((item) => item.id.startsWith("cap-"))) {
+      const match = piece.id.match(/^(cap-(?:top|bottom)-\d+)-/);
+      if (!match) continue;
+      capGroups.set(match[1], [...(capGroups.get(match[1]) || []), piece]);
+    }
+    for (const cap of capGroups.values()) {
+      cap.sort((a, b) => a.x - b.x);
+      for (let index = 1; index < cap.length; index += 1) {
+        assert.ok(cap[index].x - (cap[index - 1].x + cap[index - 1].width) >= MILL_LINE.stages!.edgingKerf - 1e-7, `Ø${diameter}: не учтён пропил кромкообрезного`);
+      }
+    }
+    for (const side of ["top", "bottom"] as const) {
+      const layers = [...capGroups.entries()]
+        .filter(([key]) => key.startsWith(`cap-${side}-`))
+        .map(([, pieces]) => ({ min: Math.min(...pieces.map((piece) => piece.y)), max: Math.max(...pieces.map((piece) => piece.y + piece.height)) }))
+        .sort((a, b) => a.min - b.min);
+      for (let index = 1; index < layers.length; index += 1) {
+        assert.ok(layers[index].min - layers[index - 1].max >= MILL_LINE.stages!.edgingKerf - 1e-7, `Ø${diameter}: не учтён межрядный пропил`);
+      }
+      if (layers.length) {
+        const distanceFromCant = side === "top"
+          ? layers[0].min - variant.cantHeight / 2
+          : -variant.cantHeight / 2 - layers.at(-1)!.max;
+        assert.ok(distanceFromCant >= MILL_LINE.stages!.breakdownKerf - 1e-7, `Ø${diameter}: не учтён пропил брусовального`);
       }
     }
   }
@@ -120,6 +167,19 @@ test("полезный добор не уменьшает основной за�
       assert.equal(filled.status, "ok", `${diameter} мм, ${primary.name}`);
       assert.equal(filled.variants[0].counts[primary.id] || 0, plain.variants[0].counts[primary.id] || 0, `${diameter} мм, ${primary.name}`);
       assert.ok(filled.variants[0].nominalRecovery + 1e-9 >= plain.variants[0].nominalRecovery, `${diameter} мм, ${primary.name}`);
+      const variant = filled.variants[0];
+      const radiusSquared = (diameter / 2) ** 2;
+      for (const piece of variant.pieces) {
+        for (const x of [piece.x, piece.x + piece.width]) for (const y of [piece.y, piece.y + piece.height]) {
+          assert.ok(x * x + y * y <= radiusSquared + 1e-6, `${diameter} мм, ${primary.name}: продукция вышла за торец`);
+        }
+      }
+      for (let left = 0; left < variant.pieces.length; left += 1) for (let right = left + 1; right < variant.pieces.length; right += 1) {
+        const a = variant.pieces[left]; const b = variant.pieces[right];
+        const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+        const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+        assert.ok(overlapX <= 1e-7 || overlapY <= 1e-7, `${diameter} мм, ${primary.name}: изделия пересекаются`);
+      }
     }
   }
 });
@@ -134,14 +194,14 @@ test("эталон Ø320 даёт 7 широких и 4 узких доски", 
   assert.equal(result.variants[0].mainSawCount, 10);
   assert.equal(result.variants[0].feeds, 2);
   assert.equal(result.variants[0].secondaryCount, 4);
-  assert.ok(Math.abs(result.variants[0].nominalRecovery - 51.50534210526316) < 1e-9);
+  assert.ok(Math.abs(result.variants[0].nominalRecovery - 55.92008571428572) < 1e-9);
 });
 
-test("готовая длина 3650 мм с припуском выбирает стандартное четырёхметровое бревно", () => {
+test("готовая длина 3650 мм с припуском выбирает ближайшее стандартное бревно 3,75 м", () => {
   const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   assert.equal(result.status, "ok");
   const variant = result.variants[0];
-  const expectedLogVolume = 0.38;
+  const expectedLogVolume = 0.35;
   assert.ok(Math.abs(variant.logVolume - expectedLogVolume) < 1e-12);
   assert.ok(Math.abs(variant.nominalVolume / variant.logVolume * 100 - variant.nominalRecovery) < 1e-12);
 });
