@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  auditVariantGeometry,
   calculate,
   calculateMaxRecovery,
   GOST_LENGTHS_M,
@@ -23,7 +24,7 @@ const format = (value: number, digits = 1) =>
     maximumFractionDigits: digits,
   });
 const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.working-circle{fill:none;stroke:#777b7c;stroke-width:1;stroke-dasharray:5 4}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
-const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.setup-box{fill:#f7f7f5;stroke:#c7c9ca;stroke-width:1}.setup-title{fill:#1c1e1f;font:800 9px Arial,sans-serif}.setup-note{fill:#696c6d;font:700 7px Arial,sans-serif}.setup-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}`;
+const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.quality-shell{fill:#fff;stroke:#202223;stroke-width:1}.quality-status{fill:#202223}.quality-status-title{fill:#fff;font:800 10px Arial,sans-serif}.quality-status-note{fill:#cfd1d1;font:700 6.5px Arial,sans-serif}.quality-label{fill:#686b6c;font:700 6.5px Arial,sans-serif}.quality-value{fill:#202223;font:800 9px Arial,sans-serif}`;
 
 function NumberField({
   label,
@@ -177,11 +178,13 @@ function TechnicalDrawing({
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
     );
   const productDisplayRows = productRows.slice(0, 6);
+  const quality = auditVariantGeometry(diameter, variant, defects, edgeAllowance);
+  const activeDefectCount = defects.filter((defect) => defect.enabled && defect.depth > 0).length;
 
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 600 830"
+      viewBox="0 0 600 900"
       style={{
         width: `${600 * zoom}px`,
         maxWidth: zoom <= 1 ? "100%" : "none",
@@ -195,7 +198,7 @@ function TechnicalDrawing({
           <circle cx={center} cy={center} r={radiusPx} />
         </clipPath>
       </defs>
-      <rect x="7" y="7" width="586" height="816" className="sheet" />
+      <rect x="7" y="7" width="586" height="886" className="sheet" />
       <circle cx={center} cy={center} r={radiusPx} className="log-circle" />
       {edgeAllowance > 0 && <circle cx={center} cy={center} r={workingRadiusPx} className="working-circle" />}
       {defects.map((defect, index) => {
@@ -352,7 +355,7 @@ function TechnicalDrawing({
       )}
       <line x1="28" y1="612" x2="580" y2="612" className="cut-line" />
       <g transform="translate(20 632)">
-        <rect width="560" height="176" rx="2" className="card-shell" />
+        <rect width="560" height="246" rx="2" className="card-shell" />
         <rect width="560" height="38" className="card-header" />
         <text x="14" y="24" className="card-header-title">
           {mode === "final"
@@ -408,6 +411,19 @@ function TechnicalDrawing({
           <text x="11" y="96" className="equipment-label">
             ЗАПАС ОТ КРАЯ · {format(edgeAllowance)} ММ
           </text>
+        </g>
+        <g transform="translate(14 170)">
+          <rect width="532" height="60" rx="3" className="quality-shell" />
+          <path d="M3 0 H132 V60 H3 Q0 60 0 57 V3 Q0 0 3 0 Z" className="quality-status" />
+          <text x="12" y="18" className="quality-status-title">КОНТРОЛЬ РАСЧЁТА</text>
+          <text x="12" y="35" className="quality-status-title">{quality.passed ? "ПРОЙДЕН" : "ТРЕБУЕТ ПРОВЕРКИ"}</text>
+          <text x="12" y="49" className="quality-status-note">ПРОВЕРЕНО АЛГОРИТМОМ</text>
+          <text x="146" y="15" className="quality-label">ГЕОМЕТРИЯ</text>
+          <text x="146" y="31" className="quality-value">{quality.overlapCount} ПЕРЕСЕЧЕНИЙ · {quality.outsideCount} ВЫХОДОВ ЗА ТОРЕЦ</text>
+          <text x="146" y="48" className="quality-label">КРАЙ: ФАКТ. {format(quality.minEdgeClearance)} ММ ≥ ТРЕБ. {format(edgeAllowance)} ММ</text>
+          <text x="390" y="15" className="quality-label">ДЕФЕКТЫ</text>
+          <text x="390" y="31" className="quality-value">{activeDefectCount} УЧТЕНО · {quality.defectCollisionCount} ПОПАДАНИЙ</text>
+          <text x="390" y="48" className="quality-label">ГОСТ: Ø{variant.gostDiameterCm} СМ × {format(variant.gostLengthM)} М = {format(variant.logVolume, 3)} М³</text>
         </g>
       </g>
     </svg>
@@ -656,7 +672,7 @@ export function CalculatorApp() {
       const clone = svgRef.current.cloneNode(true) as SVGSVGElement;
       clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       clone.setAttribute("width", "1200");
-      clone.setAttribute("height", "1660");
+      clone.setAttribute("height", "1800");
       clone.style.transform = "none";
       const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
       style.textContent = EXPORT_SVG_STYLES;
@@ -674,7 +690,7 @@ export function CalculatorApp() {
       });
       const canvas = document.createElement("canvas");
       canvas.width = 1200;
-      canvas.height = 1660;
+      canvas.height = 1800;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("canvas");
       context.fillStyle = "#fff";

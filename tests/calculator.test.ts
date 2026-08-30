@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, GOST_LENGTHS_M, gost2708Volume, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+import { auditVariantGeometry, calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, GOST_LENGTHS_M, gost2708Volume, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
 
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
   const primaryId = "catalog-30x120";
@@ -15,6 +15,30 @@ test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а н�
   assert.ok(Math.abs(variant.nominalVolume - 0.0344) < 1e-12);
   assert.equal(variant.logVolume, 0.073);
   assert.ok(Math.abs(variant.nominalRecovery - 47.12328767123288) < 1e-10);
+  const audit = auditVariantGeometry(140, variant, [], 3);
+  assert.equal(audit.passed, true);
+  assert.ok(audit.minEdgeClearance >= 3 - 1e-7);
+  assert.equal(audit.overlapCount, 0);
+  assert.equal(audit.outsideCount, 0);
+  assert.equal(audit.edgeClearancePassed, true);
+});
+
+test("контроль расчёта обнаруживает испорченную геометрию, а не ставит формальный статус", () => {
+  const result = calculate({ diameter: 320, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
+  assert.equal(result.status, "ok");
+  const original = result.variants[0];
+  const broken = { ...original, pieces: [...original.pieces, { ...original.pieces[0], id: "forced-overlap" }] };
+  const audit = auditVariantGeometry(320, broken);
+  assert.equal(audit.passed, false);
+  assert.ok(audit.overlapCount > 0);
+});
+
+test("контроль расчёта отдельно проверяет заявленный запас от края", () => {
+  const primary = PRODUCT_CATALOG.find((product) => product.id === "catalog-30x120")!;
+  const result = calculate({ diameter: 140, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, products: [{ ...primary, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
+  assert.equal(result.status, "ok");
+  assert.equal(auditVariantGeometry(140, result.variants[0], [], 3).passed, true);
+  assert.equal(auditVariantGeometry(140, result.variants[0], [], 30).passed, false);
 });
 
 test("кубатурник содержит каждую рабочую пару диаметра и стандартной длины", () => {

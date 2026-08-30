@@ -222,6 +222,12 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}
 .equipment-label{fill:#6c7071;font-size:7.5px;font-weight:700}
 .equipment-name,.equipment-spec{fill:#343738;font-size:9px;font-weight:800}
+.quality-shell{fill:#fff;stroke:#202223;stroke-width:1}
+.quality-status{fill:#202223}
+.quality-status-title{fill:#fff;font-size:10px;font-weight:800}
+.quality-status-note{fill:#cfd1d1;font-size:6.5px;font-weight:700}
+.quality-label{fill:#686b6c;font-size:6.5px;font-weight:700}
+.quality-value{fill:#202223;font-size:9px;font-weight:800}
 .setup-box{fill:#f7f7f5;stroke:#c7c9ca;stroke-width:1}
 .setup-title{fill:#1c1e1f;font-size:9px;font-weight:800}
 .setup-note{fill:#696c6d;font-size:7px;font-weight:700}

@@ -71,6 +71,15 @@ export type Calculation = {
   error?: string;
 };
 
+export type GeometryAudit = {
+  minEdgeClearance: number;
+  overlapCount: number;
+  outsideCount: number;
+  defectCollisionCount: number;
+  edgeClearancePassed: boolean;
+  passed: boolean;
+};
+
 type RowState = { ids: string[] };
 type CapState = { layers: string[][] };
 
@@ -301,6 +310,40 @@ function avoidsDefect(piece: Piece, defect: Defect, radius: number) {
   if (defect.side === "left") return piece.x >= -healthyEdge - EPSILON;
   if (defect.side === "top") return piece.y + piece.height <= healthyEdge + EPSILON;
   return piece.y >= -healthyEdge - EPSILON;
+}
+
+export function auditVariantGeometry(diameter: number, variant: Variant, defects: Defect[] = [], requiredEdgeClearance = 0): GeometryAudit {
+  const radius = diameter / 2;
+  let maxCornerRadius = 0;
+  let outsideCount = 0;
+  let defectCollisionCount = 0;
+  for (const piece of variant.pieces) {
+    let outside = false;
+    for (const x of [piece.x, piece.x + piece.width]) for (const y of [piece.y, piece.y + piece.height]) {
+      const cornerRadius = Math.hypot(x, y);
+      maxCornerRadius = Math.max(maxCornerRadius, cornerRadius);
+      if (cornerRadius > radius + EPSILON) outside = true;
+    }
+    if (outside) outsideCount += 1;
+    if (defects.some((defect) => defect.enabled && !avoidsDefect(piece, defect, radius))) defectCollisionCount += 1;
+  }
+  let overlapCount = 0;
+  for (let left = 0; left < variant.pieces.length; left += 1) for (let right = left + 1; right < variant.pieces.length; right += 1) {
+    const a = variant.pieces[left]; const b = variant.pieces[right];
+    const overlapX = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+    const overlapY = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+    if (overlapX > EPSILON && overlapY > EPSILON) overlapCount += 1;
+  }
+  const minEdgeClearance = Math.max(0, radius - maxCornerRadius);
+  const edgeClearancePassed = minEdgeClearance + EPSILON >= requiredEdgeClearance;
+  return {
+    minEdgeClearance,
+    overlapCount,
+    outsideCount,
+    defectCollisionCount,
+    edgeClearancePassed,
+    passed: overlapCount === 0 && outsideCount === 0 && defectCollisionCount === 0 && edgeClearancePassed,
+  };
 }
 
 function candidateOffsets(defects: Defect[], pieces: Piece[], fitRadius: number, logRadius: number) {
