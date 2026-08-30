@@ -105,6 +105,11 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .manual-diameter label span,.log-extra-details label span{display:block;margin-bottom:6px;color:#56595a;font-size:10px;font-weight:700}
 .manual-diameter input,.log-extra-details input{width:100%;min-height:43px;padding:9px 10px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;font-size:15px;font-weight:800}
 .edge-allowance-panel{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center;margin-top:12px;padding:13px;border:1px solid #bfc2c3;border-radius:8px;background:#ececea}
+.log-length-panel{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:12px;align-items:center;margin-top:12px;padding:13px;border:1px solid #202223;border-radius:8px;background:#fff}
+.log-length-panel strong,.log-length-panel span{display:block}
+.log-length-panel strong{font-size:12px}
+.log-length-panel span{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}
+.log-length-panel select{width:100%;height:43px;padding:0 9px;border:1px solid #aeb1b2;border-radius:7px;background:#f7f7f5;color:#202223;font-size:14px;font-weight:800}
 .edge-allowance-panel strong,.edge-allowance-panel span{display:block}
 .edge-allowance-panel strong{font-size:11px}
 .edge-allowance-panel span{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}

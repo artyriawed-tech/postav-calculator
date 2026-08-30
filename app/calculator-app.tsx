@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
   calculateMaxRecovery,
+  GOST_LENGTHS_M,
   LOG_DIAMETERS,
   MILL_LINE,
   PRODUCT_CATALOG,
@@ -361,23 +362,23 @@ function TechnicalDrawing({
               : "МНОГОПИЛ"}
         </text>
         <text x="546" y="23" textAnchor="end" className="card-header-meta">
-          Ø{format(diameter, 0)} · {variant.pieces.length} ШТ. С БРЕВНА
+          Ø{format(diameter, 0)} · {format(variant.gostLengthM)} М · {variant.pieces.length} ШТ.
         </text>
         <g transform="translate(14 50)">
           <rect width="348" height="108" rx="3" className="result-group" />
           <path d="M3 0 H132 V108 H3 Q0 108 0 105 V3 Q0 0 3 0 Z" className="recovery-box" />
           <line x1="132" y1="0" x2="132" y2="108" className="result-divider" />
           <text x="12" y="18" className="recovery-label">
-            ПОЛЕЗНЫЙ ВЫХОД
+            ВЫХОД ПО ГОСТ 2708-75
           </text>
           <text x="12" y="52" className="card-metric">
             {format(variant.nominalRecovery)}%
           </text>
           <text x="12" y="76" className="recovery-label">
-            РАСПИЛЕНО / ОСТАТОК
+            ПРОДУКЦИЯ / СЫРЬЁ
           </text>
           <text x="12" y="94" className="recovery-value">
-            {format(variant.cuttingRecovery)}% / {format(variant.residualRecovery)}%
+            {format(variant.nominalVolume, 4)} / {format(variant.logVolume, 3)} М³
           </text>
           <text x="146" y="18" className="card-label">
             ПРОДУКЦИЯ
@@ -415,7 +416,7 @@ function TechnicalDrawing({
 
 export function CalculatorApp() {
   const [diameter, setDiameter] = useState<number | null>(null);
-  const [logLength, setLogLength] = useState<number | null>(null);
+  const [logLength, setLogLength] = useState<number | null>(4000);
   const [logAdded, setLogAdded] = useState(true);
   const [finishedLength, setFinishedLength] = useState<number | null>(null);
   const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
@@ -464,7 +465,7 @@ export function CalculatorApp() {
     typeof value === "number" && Number.isFinite(value) && value > 0;
   const equipmentReady =
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
-  const logReady = logAdded && positive(diameter);
+  const logReady = logAdded && positive(diameter) && positive(logLength);
   const edgeAllowanceReady = Number.isFinite(edgeAllowance) && edgeAllowance >= 0 && !!diameter && edgeAllowance < diameter / 2;
   const productsReady =
     products.some((product) => product.enabled) &&
@@ -484,7 +485,7 @@ export function CalculatorApp() {
     : !logAdded
       ? "Выберите диаметр бревна."
       : !logReady
-        ? "Выберите диаметр тонкого торца."
+        ? "Выберите диаметр тонкого торца и длину бревна."
         : !edgeAllowanceReady
           ? "Проверьте запас от края бревна."
         : products.length === 0
@@ -576,14 +577,14 @@ export function CalculatorApp() {
   const addLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setLogLength(null);
+    setLogLength(4000);
     setEdgeAllowance(3);
     setDefects([]);
   };
   const removeLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setLogLength(null);
+    setLogLength(4000);
     setEdgeAllowance(3);
     setDefects([]);
   };
@@ -807,6 +808,21 @@ export function CalculatorApp() {
                     </div>
                   )}
                   <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
+                  <div className="log-length-panel">
+                    <div>
+                      <strong>Длина бревна</strong>
+                      <span>Нужна для объёма сырья по ГОСТ. По умолчанию — 4 м.</span>
+                    </div>
+                    <select
+                      value={logLength ?? ""}
+                      aria-label="Длина бревна"
+                      onChange={(event) => setLogLength(Number(event.target.value))}
+                    >
+                      {GOST_LENGTHS_M.map((value) => (
+                        <option key={value} value={value * 1000}>{format(value)} м</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="edge-allowance-panel">
                     <div>
                       <strong>Запас от края бревна</strong>
@@ -929,7 +945,7 @@ export function CalculatorApp() {
               <h2>Чертёж распила</h2>
               <p className="drawing-context">
                 {variant && diameter
-                  ? `Бревно Ø${format(diameter, 0)} мм · получаем ${variant.pieces.length} шт.`
+                  ? `Бревно Ø${format(diameter, 0)} мм · ${format(variant.gostLengthM)} м · получаем ${variant.pieces.length} шт. · выход по ГОСТ ${format(variant.nominalRecovery)}%`
                   : "Чертёж появится, когда исходные данные будут заполнены"}
               </p>
             </div>

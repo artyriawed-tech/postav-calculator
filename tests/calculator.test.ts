@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+import { calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, GOST_LENGTHS_M, gost2708Volume, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+
+test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
+  const primaryId = "catalog-30x120";
+  const products = PRODUCT_CATALOG
+    .filter((product) => product.id === primaryId || (product.nominalThickness <= 30 && product.nominalWidth <= 120))
+    .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
+  const result = calculate({ diameter: 140, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, products, equipment: MILL_LINE, topN: 1 });
+  assert.equal(result.status, "ok");
+  const variant = result.variants[0];
+  assert.equal(variant.counts[primaryId], 1);
+  assert.equal(variant.counts["catalog-25x100"], 2);
+  assert.ok(Math.abs(variant.nominalVolume - 0.0344) < 1e-12);
+  assert.equal(variant.logVolume, 0.073);
+  assert.ok(Math.abs(variant.nominalRecovery - 47.12328767123288) < 1e-10);
+});
+
+test("кубатурник содержит каждую рабочую пару диаметра и стандартной длины", () => {
+  for (const diameter of LOG_DIAMETERS) for (const length of GOST_LENGTHS_M) {
+    assert.ok(gost2708Volume(diameter, length * 1000), `Ø${diameter}, ${length} м`);
+  }
+});
 
 test("Ø140 с запасом 3 мм безопасно добирает 25×100 вокруг заказа 30×120", () => {
   const primaryId = "catalog-30x120";
@@ -113,14 +134,14 @@ test("эталон Ø320 даёт 7 широких и 4 узких доски", 
   assert.equal(result.variants[0].mainSawCount, 10);
   assert.equal(result.variants[0].feeds, 2);
   assert.equal(result.variants[0].secondaryCount, 4);
-  assert.ok(Math.abs(result.variants[0].nominalRecovery - 65.95073934711358) < 1e-9);
+  assert.ok(Math.abs(result.variants[0].nominalRecovery - 51.50534210526316) < 1e-9);
 });
 
-test("готовая длина 3650 мм считается с производственным припуском +40 мм", () => {
+test("готовая длина 3650 мм с припуском выбирает стандартное четырёхметровое бревно", () => {
   const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   assert.equal(result.status, "ok");
   const variant = result.variants[0];
-  const expectedLogVolume = Math.PI * Math.pow(320 / 2000, 2) * 3.69;
+  const expectedLogVolume = 0.38;
   assert.ok(Math.abs(variant.logVolume - expectedLogVolume) < 1e-12);
   assert.ok(Math.abs(variant.nominalVolume / variant.logVolume * 100 - variant.nominalRecovery) < 1e-12);
 });
@@ -129,14 +150,14 @@ test("фактическая длина бревна участвует в об�
   const result = calculate({
     diameter: 320,
     length: 3600,
-    logLength: 3800,
+    logLength: 4000,
     lengthAllowance: 25,
     products: DEFAULT_PRODUCTS,
     equipment: DEFAULT_EQUIPMENT[0],
     topN: 1,
   });
   assert.equal(result.status, "ok");
-  const expectedLogVolume = Math.PI * Math.pow(320 / 2000, 2) * 3.8;
+  const expectedLogVolume = 0.38;
   assert.ok(Math.abs(result.variants[0].logVolume - expectedLogVolume) < 1e-12);
 });
 
@@ -287,12 +308,12 @@ test("станок без повторных подач никогда не по
   assert.ok(result.variants.every((variant) => variant.mainSawCount <= 4));
 });
 
-test("крупное бревно не ограничивается прежним пределом в 17 досок центрального ряда", () => {
+test("крупное бревно из рабочего сортамента не ограничивается коротким центральным рядом", () => {
   const products = [{ id: "x", name: "27 × 100", nominalThickness: 27, nominalWidth: 100, cuttingThickness: 29, cuttingWidth: 102, color: "blue" as const, enabled: true }];
   const equipment = { ...DEFAULT_EQUIPMENT[1], maxSaws: 30 };
-  const result = calculate({ diameter: 700, length: 3650, products, equipment, topN: 1 });
+  const result = calculate({ diameter: 360, length: 3650, products, equipment, topN: 1 });
   assert.equal(result.status, "ok");
   const row = result.variants[0].pieces.filter((piece) => piece.id.startsWith("row-"));
-  assert.ok(row.length > 17);
+  assert.ok(row.length > 9);
   assert.equal(result.variants[0].mainSawCount, row.length + 1);
 });

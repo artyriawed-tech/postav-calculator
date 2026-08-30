@@ -52,6 +52,8 @@ export type Variant = {
   nominalVolume: number;
   cuttingVolume: number;
   logVolume: number;
+  gostDiameterCm: number;
+  gostLengthM: number;
   nominalRecovery: number;
   cuttingRecovery: number;
   residualRecovery: number;
@@ -73,6 +75,34 @@ type RowState = { ids: string[] };
 type CapState = { layers: string[][] };
 
 const EPSILON = 1e-7;
+
+// ГОСТ 2708-75, таблица 1: объём одного круглого лесоматериала по толщине
+// в верхнем отрубе и длине. В рабочем интерфейсе используются только эти
+// стандартные длины, поэтому процент выхода можно сверить обычным кубатурником.
+export const GOST_LENGTHS_M = [3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9] as const;
+const GOST_2708_VOLUMES: Record<number, readonly number[]> = {
+  14: [0.052, 0.061, 0.073, 0.084, 0.097, 0.110, 0.123, 0.135, 0.150, 0.164, 0.179, 0.195, 0.21],
+  16: [0.069, 0.082, 0.095, 0.110, 0.124, 0.140, 0.155, 0.172, 0.189, 0.200, 0.220, 0.240, 0.26],
+  18: [0.086, 0.103, 0.120, 0.138, 0.156, 0.175, 0.194, 0.210, 0.230, 0.25, 0.28, 0.3, 0.32],
+  20: [0.107, 0.126, 0.147, 0.170, 0.190, 0.210, 0.23, 0.26, 0.28, 0.30, 0.33, 0.36, 0.39],
+  22: [0.130, 0.154, 0.178, 0.200, 0.230, 0.250, 0.28, 0.31, 0.34, 0.37, 0.40, 0.43, 0.46],
+  24: [0.157, 0.184, 0.210, 0.240, 0.270, 0.300, 0.33, 0.36, 0.40, 0.43, 0.47, 0.50, 0.55],
+  26: [0.185, 0.210, 0.250, 0.280, 0.320, 0.350, 0.39, 0.43, 0.46, 0.50, 0.54, 0.58, 0.63],
+  28: [0.220, 0.250, 0.290, 0.330, 0.370, 0.410, 0.45, 0.49, 0.53, 0.58, 0.63, 0.67, 0.72],
+  30: [0.25, 0.29, 0.33, 0.38, 0.42, 0.47, 0.52, 0.56, 0.61, 0.66, 0.72, 0.78, 0.83],
+  32: [0.28, 0.33, 0.38, 0.43, 0.48, 0.53, 0.59, 0.64, 0.70, 0.76, 0.82, 0.88, 0.94],
+  34: [0.32, 0.37, 0.43, 0.49, 0.54, 0.60, 0.66, 0.72, 0.78, 0.85, 0.92, 0.98, 1.06],
+  36: [0.36, 0.42, 0.48, 0.54, 0.60, 0.67, 0.74, 0.80, 0.88, 0.95, 1.02, 1.10, 1.18],
+};
+
+export function gost2708Volume(diameterMm: number, lengthMm: number) {
+  const diameterCm = Math.floor(diameterMm / 20) * 2;
+  const lengthM = lengthMm / 1000;
+  const lengthIndex = GOST_LENGTHS_M.findIndex((value) => Math.abs(value - lengthM) < EPSILON);
+  const row = GOST_2708_VOLUMES[diameterCm];
+  if (!row || lengthIndex < 0) return null;
+  return { volume: row[lengthIndex], diameterCm, lengthM };
+}
 
 function rectFits(x: number, y: number, width: number, height: number, radius: number) {
   const farX = Math.max(Math.abs(x), Math.abs(x + width));
@@ -339,11 +369,13 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   // старым эталонным чертежом (+40 мм).
   const lengthAllowance = input.lengthAllowance ?? 40;
   const cuttingLength = length + lengthAllowance;
-  const logLength = input.logLength ?? cuttingLength;
+  const logLength = input.logLength ?? ((GOST_LENGTHS_M.find((value) => value * 1000 + EPSILON >= cuttingLength) ?? 0) * 1000);
   if (!Number.isFinite(lengthAllowance) || lengthAllowance < 0) return { status: "invalid", variants: [], error: "Припуск по длине не может быть отрицательным." };
   if (!Number.isFinite(logLength) || logLength <= 0) return { status: "invalid", variants: [], error: "Проверьте фактическую длину бревна." };
   if (cuttingLength > logLength + EPSILON) return { status: "invalid", variants: [], error: `Для готовой длины ${length} мм и припуска ${lengthAllowance} мм нужно бревно не короче ${cuttingLength} мм.` };
-  const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (logLength / 1000);
+  const gostLog = gost2708Volume(diameter, logLength);
+  if (!gostLog) return { status: "invalid", variants: [], error: "Для выхода по ГОСТ выберите стандартную длину 3–9 м с шагом 0,5 м и диаметр 140–379 мм." };
+  const logVolume = gostLog.volume;
 
   for (const cantHeight of heights) {
     const rows = generateRows(rowProducts, mainKerf, fitRadius, cantHeight, input.objective);
@@ -368,7 +400,7 @@ export function calculate(input: { diameter: number; length: number; logLength?:
           const nominalVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * length / 1e9, 0);
           const cuttingVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.cuttingThickness * product.cuttingWidth * cuttingLength / 1e9, 0);
           const signature = `${cantHeight}|${row.ids.join(",")}|${cap.layers.map((layer) => layer.join(",")).join(";")}|${offset.x},${offset.y}`;
-          variants.push({ id: signature, cantHeight, pieces, counts, nominalVolume, cuttingVolume, logVolume, nominalRecovery: nominalVolume / logVolume * 100, cuttingRecovery: cuttingVolume / logVolume * 100, residualRecovery: Math.max(0, 100 - cuttingVolume / logVolume * 100), mainSawCount, secondaryCount, feeds, offsetX: offset.x, offsetY: offset.y, signature });
+          variants.push({ id: signature, cantHeight, pieces, counts, nominalVolume, cuttingVolume, logVolume, gostDiameterCm: gostLog.diameterCm, gostLengthM: gostLog.lengthM, nominalRecovery: nominalVolume / logVolume * 100, cuttingRecovery: cuttingVolume / logVolume * 100, residualRecovery: Math.max(0, 100 - cuttingVolume / logVolume * 100), mainSawCount, secondaryCount, feeds, offsetX: offset.x, offsetY: offset.y, signature });
           break;
         }
       }
