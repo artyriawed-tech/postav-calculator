@@ -270,7 +270,7 @@ function avoidsDefect(piece: Piece, defect: Defect, radius: number) {
   return piece.y >= -healthyEdge - EPSILON;
 }
 
-function candidateOffsets(defects: Defect[], pieces: Piece[], radius: number) {
+function candidateOffsets(defects: Defect[], pieces: Piece[], fitRadius: number, logRadius: number) {
   const minX = Math.min(...pieces.map((piece) => piece.x));
   const maxX = Math.max(...pieces.map((piece) => piece.x + piece.width));
   const minY = Math.min(...pieces.map((piece) => piece.y));
@@ -278,11 +278,11 @@ function candidateOffsets(defects: Defect[], pieces: Piece[], radius: number) {
   // Физические границы смещения всего постава внутри торца. Они зависят от
   // диаметра, поэтому фиксированный диапазон здесь давал неверный результат
   // на крупных брёвнах.
-  let lowX = -radius - minX; let highX = radius - maxX;
-  let lowY = -radius - minY; let highY = radius - maxY;
+  let lowX = -fitRadius - minX; let highX = fitRadius - maxX;
+  let lowY = -fitRadius - minY; let highY = fitRadius - maxY;
   let constrainX = false; let constrainY = false;
   for (const defect of defects) {
-    const healthyEdge = radius - defect.depth;
+    const healthyEdge = logRadius - defect.depth;
     if (defect.side === "right") { highX = Math.min(highX, healthyEdge - maxX); constrainX = true; }
     if (defect.side === "left") { lowX = Math.max(lowX, -healthyEdge - minX); constrainX = true; }
     if (defect.side === "top") { highY = Math.min(highY, healthyEdge - maxY); constrainY = true; }
@@ -302,7 +302,7 @@ function candidateOffsets(defects: Defect[], pieces: Piece[], radius: number) {
   return xs.flatMap((x) => ys.map((y) => ({ x, y }))).sort((a, b) => Math.abs(a.x) + Math.abs(a.y) - Math.abs(b.x) - Math.abs(b.y));
 }
 
-export function calculate(input: { diameter: number; length: number; logLength?: number; lengthAllowance?: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number; objective?: "primary" | "recovery" }): Calculation {
+export function calculate(input: { diameter: number; length: number; logLength?: number; lengthAllowance?: number; edgeAllowance?: number; products: Product[]; equipment: Equipment; defect?: Defect; defects?: Defect[]; topN?: number; objective?: "primary" | "recovery" }): Calculation {
   const { diameter, length, equipment } = input;
   const products = input.products.filter((product) => product.enabled);
   const radius = diameter / 2;
@@ -321,6 +321,9 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const edgingKerf = equipment.stages?.edgingKerf ?? equipment.kerf;
   if ([breakdownKerf, mainKerf, edgingKerf].some((kerf) => !Number.isFinite(kerf) || kerf <= 0)) return { status: "invalid", variants: [], error: "Ширина каждого пропила должна быть больше нуля." };
   const suppliedDefects = input.defects || (input.defect ? [input.defect] : []);
+  const edgeAllowance = input.edgeAllowance ?? 0;
+  if (!Number.isFinite(edgeAllowance) || edgeAllowance < 0 || edgeAllowance >= radius) return { status: "invalid", variants: [], error: "Запас от края должен быть от 0 до радиуса бревна." };
+  const fitRadius = radius - edgeAllowance;
   if (suppliedDefects.some((defect) => defect.enabled && (!Number.isFinite(defect.depth) || defect.depth < 0 || defect.depth >= radius))) return { status: "invalid", variants: [], error: "Глубина каждого дефекта должна быть от 0 до радиуса бревна." };
   const defects = suppliedDefects.filter((defect) => defect.enabled && defect.depth > 0);
 
@@ -329,7 +332,7 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   // заполнять только верх и низ, поэтому у небольших брёвен оставались пустые
   // боковые зоны даже при включённом полезном доборе.
   const rowProducts = products;
-  const heights = [...new Set(rowProducts.map((product) => product.cuttingWidth))].filter((height) => height <= diameter);
+  const heights = [...new Set(rowProducts.map((product) => product.cuttingWidth))].filter((height) => height <= fitRadius * 2);
   const variants: Variant[] = [];
   // `length` — готовая длина продукции. Припуск и фактическая длина бревна
   // передаются отдельно; значения по умолчанию сохраняют совместимость со
@@ -343,14 +346,14 @@ export function calculate(input: { diameter: number; length: number; logLength?:
   const logVolume = Math.PI * Math.pow(diameter / 2000, 2) * (logLength / 1000);
 
   for (const cantHeight of heights) {
-    const rows = generateRows(rowProducts, mainKerf, radius, cantHeight, input.objective);
-    const caps = generateCaps(products, edgingKerf, radius, cantHeight, breakdownKerf, input.objective);
+    const rows = generateRows(rowProducts, mainKerf, fitRadius, cantHeight, input.objective);
+    const caps = generateCaps(products, edgingKerf, fitRadius, cantHeight, breakdownKerf, input.objective);
     for (const row of rows) {
       if (!row.ids.length) continue;
-      const rowPieces = buildCenteredRow(row.ids, products, mainKerf, radius, cantHeight);
+      const rowPieces = buildCenteredRow(row.ids, products, mainKerf, fitRadius, cantHeight);
       if (!rowPieces) continue;
       for (const cap of caps) {
-        const capPieces = buildCaps(cap.layers, products, edgingKerf, radius, cantHeight, breakdownKerf);
+        const capPieces = buildCaps(cap.layers, products, edgingKerf, fitRadius, cantHeight, breakdownKerf);
         if (!capPieces) continue;
         const basePieces = [...rowPieces, ...capPieces];
         const secondaryCount = basePieces.filter((piece) => piece.secondary).length;
@@ -358,9 +361,9 @@ export function calculate(input: { diameter: number; length: number; logLength?:
         const mainSawCount = rowPieces.length + 1;
         const feeds = equipment.maxSaws > 0 ? Math.max(1, Math.ceil(mainSawCount / equipment.maxSaws)) : 1;
         if (feeds > 1 && !equipment.multipleFeeds) continue;
-        for (const offset of candidateOffsets(defects, basePieces, radius)) {
+        for (const offset of candidateOffsets(defects, basePieces, fitRadius, radius)) {
           const pieces = shiftedPieces(basePieces, offset.x, offset.y);
-          if (!pieces.every((piece) => rectFits(piece.x, piece.y, piece.width, piece.height, radius) && defects.every((defect) => avoidsDefect(piece, defect, radius)))) continue;
+          if (!pieces.every((piece) => rectFits(piece.x, piece.y, piece.width, piece.height, fitRadius) && defects.every((defect) => avoidsDefect(piece, defect, radius)))) continue;
           const counts = countProducts(pieces);
           const nominalVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * length / 1e9, 0);
           const cuttingVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.cuttingThickness * product.cuttingWidth * cuttingLength / 1e9, 0);
@@ -431,6 +434,7 @@ export function calculateMaxRecovery(input: {
   length: number;
   logLength?: number;
   lengthAllowance?: number;
+  edgeAllowance?: number;
   equipment: Equipment;
   defects?: Defect[];
   topN?: number;

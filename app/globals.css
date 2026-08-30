@@ -104,6 +104,13 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .manual-diameter{margin-top:12px;padding-top:11px;border-top:1px solid #d5d7d8}
 .manual-diameter label span,.log-extra-details label span{display:block;margin-bottom:6px;color:#56595a;font-size:10px;font-weight:700}
 .manual-diameter input,.log-extra-details input{width:100%;min-height:43px;padding:9px 10px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;font-size:15px;font-weight:800}
+.edge-allowance-panel{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center;margin-top:12px;padding:13px;border:1px solid #bfc2c3;border-radius:8px;background:#ececea}
+.edge-allowance-panel strong,.edge-allowance-panel span{display:block}
+.edge-allowance-panel strong{font-size:11px}
+.edge-allowance-panel span{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}
+.edge-allowance-panel label{display:grid;grid-template-columns:1fr 22px;align-items:center;border:1px solid #aeb1b2;border-radius:7px;background:#fff;overflow:hidden}
+.edge-allowance-panel input{width:100%;min-width:0;height:42px;padding:8px;border:0;background:#fff;font-size:15px;font-weight:800;text-align:right;outline:none}
+.edge-allowance-panel b{color:#66696a;font-size:9px}
 .log-extra-details{margin-top:11px;padding-top:10px;border-top:1px solid #d5d7d8}
 .log-extra-details summary{cursor:pointer;color:#4f5253;font-size:10px;font-weight:800}
 .log-extra-details label{display:block;margin-top:10px}
@@ -188,15 +195,19 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .boards-section{background:#f8f8f6}
 .boards-section .section-title{padding-bottom:13px;border-bottom:1px solid #d5d7d8}
 .catalog-picker{padding:14px;border:1px solid #bfc2c3;border-radius:9px;background:#fff}
-.auto-yield-button{width:100%;padding:15px;border:1px solid #202223;border-radius:8px;background:#202223;color:#fff;text-align:left}
-.auto-yield-button strong,.auto-yield-button span{display:block}
+.auto-yield-button{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:15px;border:2px solid #202223;border-radius:8px;background:#202223;color:#fff;text-align:left;box-shadow:0 4px 0 #aeb1b2;transition:transform .12s,box-shadow .12s}
+.auto-yield-button:hover,.auto-yield-button:focus-visible{transform:translateY(-1px);box-shadow:0 6px 0 #aeb1b2;outline:2px solid #777b7c;outline-offset:2px}
+.auto-yield-button:active{transform:translateY(2px);box-shadow:0 2px 0 #aeb1b2}
+.auto-yield-button span,.auto-yield-button strong,.auto-yield-button small{display:block}
 .auto-yield-button strong{font-size:14px}
-.auto-yield-button span{margin-top:5px;color:#d5d7d8;font-size:10px;line-height:1.4}
+.auto-yield-button small{margin-top:5px;color:#d5d7d8;font-size:10px;line-height:1.4}
+.auto-yield-button>b{padding:9px 10px;border-radius:6px;background:#fff;color:#202223;font-size:10px;white-space:nowrap}
 .catalog-divider{display:flex;align-items:center;gap:9px;margin:13px 0;color:#7a7d7e;font-size:9px;font-weight:800;text-transform:uppercase}
 .catalog-divider::before,.catalog-divider::after{content:"";height:1px;flex:1;background:#dedfdf}
 .selected-order-card.automatic{background:#353839;border-color:#353839}
 .diameter-grid button:last-child{font-size:10px;line-height:1.15}
 .card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}
+.working-circle{fill:none;stroke:#777b7c;stroke-width:1;stroke-dasharray:5 4}
 .result-group{fill:#fff;stroke:#202223;stroke-width:1.2}
 .recovery-box{fill:#202223}
 .result-divider{stroke:#202223;stroke-width:1.2}
@@ -218,4 +229,7 @@ input::placeholder{color:#a0a3a4;font-weight:500}
   .mill-stages b{font-size:9px}
   .mill-stages small{font-size:9px}
   .catalog-picker{padding:12px}
+  .edge-allowance-panel{grid-template-columns:minmax(0,1fr) 88px}
+  .auto-yield-button{grid-template-columns:1fr;padding:14px}
+  .auto-yield-button>b{justify-self:start}
 }

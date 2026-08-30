@@ -2,28 +2,71 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
 
-test("Ø140 с заказом 30×120 заполняет боковые зоны размером 25×50", () => {
+test("Ø140 с запасом 3 мм безопасно добирает 25×100 вокруг заказа 30×120", () => {
   const primaryId = "catalog-30x120";
   const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId)!;
   const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
   const withByproducts = PRODUCT_CATALOG
     .filter((product) => product.id === primaryId || (product.nominalThickness <= 30 && product.nominalWidth <= 120))
     .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
-  const plain = calculate({ diameter: 140, length: 1000, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
-  const filled = calculate({ diameter: 140, length: 1000, products: withByproducts, equipment: MILL_LINE, topN: 1 });
+  const plain = calculate({ diameter: 140, length: 1000, edgeAllowance: 3, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
+  const filled = calculate({ diameter: 140, length: 1000, edgeAllowance: 3, products: withByproducts, equipment: MILL_LINE, topN: 1 });
   assert.equal(plain.status, "ok");
   assert.equal(filled.status, "ok");
-  assert.equal(filled.variants[0].counts[primaryId], 2);
-  assert.equal(filled.variants[0].counts["catalog-25x50"], 2);
+  assert.equal(filled.variants[0].counts[primaryId], 1);
+  assert.equal(filled.variants[0].counts["catalog-25x100"], 2);
   assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
 });
 
 test("автоматический режим на каждом рабочем диаметре находит полезный раскрой", () => {
   for (const diameter of LOG_DIAMETERS) {
-    const result = calculateMaxRecovery({ diameter, length: 1000, equipment: MILL_LINE, topN: 1 });
+    const edgeAllowance = 3;
+    const result = calculateMaxRecovery({ diameter, length: 1000, edgeAllowance, equipment: MILL_LINE, topN: 1 });
     assert.equal(result.status, "ok", `Ø${diameter}`);
     assert.ok(result.variants[0].pieces.length > 0, `Ø${diameter}`);
     assert.ok(result.variants[0].nominalRecovery > 0, `Ø${diameter}`);
+    let bestSingleRecovery = 0;
+    for (const product of PRODUCT_CATALOG) {
+      const single = calculate({
+        diameter,
+        length: 1000,
+        edgeAllowance,
+        products: [{ ...product, enabled: true, priority: "primary" as const }],
+        equipment: MILL_LINE,
+        topN: 1,
+      });
+      if (single.status === "ok") bestSingleRecovery = Math.max(bestSingleRecovery, single.variants[0].nominalRecovery);
+    }
+    assert.ok(result.variants[0].nominalRecovery + 1e-9 >= bestSingleRecovery, `Ø${diameter}: автоматический режим хуже лучшего раскроя одним размером`);
+    if (diameter === 140) assert.ok(new Set(result.variants[0].pieces.map((piece) => piece.productId)).size > 1, "Ø140: автоматический режим не заполнил свободные зоны вторым размером");
+    const workingRadiusSquared = (diameter / 2 - edgeAllowance) ** 2;
+    for (const piece of result.variants[0].pieces) {
+      for (const x of [piece.x, piece.x + piece.width]) for (const y of [piece.y, piece.y + piece.height]) {
+        assert.ok(x * x + y * y <= workingRadiusSquared + 1e-6, `Ø${diameter}: угол продукции вошёл в запас от края`);
+      }
+    }
+  }
+});
+
+test("запас от края и боковой дефект учитываются независимо", () => {
+  const edgeAllowance = 3;
+  const defectDepth = 20;
+  const result = calculate({
+    diameter: 320,
+    length: 3650,
+    edgeAllowance,
+    products: DEFAULT_PRODUCTS,
+    equipment: DEFAULT_EQUIPMENT[0],
+    defects: [{ enabled: true, side: "right", depth: defectDepth }],
+    topN: 1,
+  });
+  assert.equal(result.status, "ok");
+  const workingRadiusSquared = (160 - edgeAllowance) ** 2;
+  for (const piece of result.variants[0].pieces) {
+    assert.ok(piece.x + piece.width <= 160 - defectDepth + 1e-7);
+    for (const x of [piece.x, piece.x + piece.width]) for (const y of [piece.y, piece.y + piece.height]) {
+      assert.ok(x * x + y * y <= workingRadiusSquared + 1e-6);
+    }
   }
 });
 

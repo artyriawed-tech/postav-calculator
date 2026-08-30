@@ -21,7 +21,7 @@ const format = (value: number, digits = 1) =>
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
-const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
+const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.working-circle{fill:none;stroke:#777b7c;stroke-width:1;stroke-dasharray:5 4}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
 const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.setup-box{fill:#f7f7f5;stroke:#c7c9ca;stroke-width:1}.setup-title{fill:#1c1e1f;font:800 9px Arial,sans-serif}.setup-note{fill:#696c6d;font:700 7px Arial,sans-serif}.setup-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}`;
 
 function NumberField({
@@ -115,6 +115,7 @@ function TechnicalDrawing({
   svgRef,
   equipment,
   defects,
+  edgeAllowance,
 }: {
   diameter: number;
   variant: Variant;
@@ -124,10 +125,12 @@ function TechnicalDrawing({
   svgRef: React.RefObject<SVGSVGElement | null>;
   equipment: Equipment;
   defects: Defect[];
+  edgeAllowance: number;
 }) {
   const center = 300;
   const radiusPx = 215;
   const scale = radiusPx / (diameter / 2);
+  const workingRadiusPx = Math.max(0, radiusPx - edgeAllowance * scale);
   const productMap = new Map(products.map((product) => [product.id, product]));
   const pieces = variant.pieces.filter(
     (piece) =>
@@ -193,6 +196,7 @@ function TechnicalDrawing({
       </defs>
       <rect x="7" y="7" width="586" height="816" className="sheet" />
       <circle cx={center} cy={center} r={radiusPx} className="log-circle" />
+      {edgeAllowance > 0 && <circle cx={center} cy={center} r={workingRadiusPx} className="working-circle" />}
       {defects.map((defect, index) => {
         const rect = defectRect(defect, center, radiusPx, scale);
         return (
@@ -391,14 +395,17 @@ function TechnicalDrawing({
           <text x="11" y="19" className="equipment-label">
             ОБОРУДОВАНИЕ
           </text>
-          <text x="11" y="43" className="equipment-name">
+          <text x="11" y="36" className="equipment-name">
             БРУСОВАЛЬНЫЙ · {format(equipment.stages?.breakdownKerf ?? equipment.kerf)} ММ
           </text>
-          <text x="11" y="67" className="equipment-spec">
+          <text x="11" y="55" className="equipment-spec">
             МНОГОПИЛ · {format(equipment.stages?.multiripKerf ?? equipment.kerf)} ММ
           </text>
-          <text x="11" y="91" className="equipment-name">
+          <text x="11" y="74" className="equipment-name">
             КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
+          </text>
+          <text x="11" y="96" className="equipment-label">
+            ЗАПАС ОТ КРАЯ · {format(edgeAllowance)} ММ
           </text>
         </g>
       </g>
@@ -415,6 +422,7 @@ export function CalculatorApp() {
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
   const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
+  const [edgeAllowance, setEdgeAllowance] = useState(3);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
@@ -457,6 +465,7 @@ export function CalculatorApp() {
   const equipmentReady =
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
   const logReady = logAdded && positive(diameter);
+  const edgeAllowanceReady = Number.isFinite(edgeAllowance) && edgeAllowance >= 0 && !!diameter && edgeAllowance < diameter / 2;
   const productsReady =
     products.some((product) => product.enabled) &&
     (orderMode === "auto" || products.some((product) => product.enabled && product.priority === "primary")) &&
@@ -468,7 +477,7 @@ export function CalculatorApp() {
         product.cuttingWidth >= product.nominalWidth,
     );
   const orderReady = productsReady && (lengthAllowance === null || lengthAllowance >= 0);
-  const readyToCalculate = equipmentReady && logReady && productsReady && orderReady;
+  const readyToCalculate = equipmentReady && logReady && edgeAllowanceReady && productsReady && orderReady;
 
   const missingMessage = !equipment
     ? "Добавьте оборудование, на котором будет выполняться распил."
@@ -476,6 +485,8 @@ export function CalculatorApp() {
       ? "Выберите диаметр бревна."
       : !logReady
         ? "Выберите диаметр тонкого торца."
+        : !edgeAllowanceReady
+          ? "Проверьте запас от края бревна."
         : products.length === 0
           ? "Добавьте размеры продукции, которую нужно получить."
           : !productsReady
@@ -492,6 +503,7 @@ export function CalculatorApp() {
       length: calculationLength,
       logLength: calculationLogLength,
       lengthAllowance: lengthAllowance ?? 0,
+      edgeAllowance,
       equipment,
       defects,
       topN: 1,
@@ -499,7 +511,7 @@ export function CalculatorApp() {
     if (orderMode !== "auto") return calculate({ ...common, products });
 
     return calculateMaxRecovery(common);
-  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, products, defects, missingMessage, orderMode]);
+  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, edgeAllowance, products, defects, missingMessage, orderMode]);
   const variant = result.variants[0];
 
   const addEquipment = () => {
@@ -565,12 +577,14 @@ export function CalculatorApp() {
     setLogAdded(true);
     setDiameter(null);
     setLogLength(null);
+    setEdgeAllowance(3);
     setDefects([]);
   };
   const removeLog = () => {
     setLogAdded(true);
     setDiameter(null);
     setLogLength(null);
+    setEdgeAllowance(3);
     setDefects([]);
   };
   const resetCalculation = () => {
@@ -580,6 +594,7 @@ export function CalculatorApp() {
     setLengthAllowance(null);
     setIncludeByproducts(true);
     setOrderMode(null);
+    setEdgeAllowance(3);
     setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
@@ -792,6 +807,23 @@ export function CalculatorApp() {
                     </div>
                   )}
                   <p className="field-help">Например, кнопка Ø24 означает бревно диаметром 240 мм.</p>
+                  <div className="edge-allowance-panel">
+                    <div>
+                      <strong>Запас от края бревна</strong>
+                      <span>Углы досок не подходят к коре ближе этого расстояния</span>
+                    </div>
+                    <label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={edgeAllowance}
+                        aria-label="Запас от края бревна в миллиметрах"
+                        onChange={(event) => setEdgeAllowance(Number(event.target.value))}
+                      />
+                      <b>мм</b>
+                    </label>
+                  </div>
                   <div className="defect-panel">
                     <label className="defect-toggle">
                       <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
@@ -841,8 +873,11 @@ export function CalculatorApp() {
               ) : products.length === 0 ? (
                 <div className="catalog-picker">
                   <button className="auto-yield-button" onClick={selectAutomaticYield}>
-                    <strong>Максимум полезного выхода</strong>
-                    <span>Без основного заказа — программа сама выберет лучшую комбинацию</span>
+                    <span>
+                      <strong>Рассчитать максимум выхода</strong>
+                      <small>Программа сама подберёт размеры и заполнит свободные места</small>
+                    </span>
+                    <b>Рассчитать →</b>
                   </button>
                   <div className="catalog-divider"><span>или</span></div>
                   <strong>Основной заказ</strong>
@@ -927,6 +962,7 @@ export function CalculatorApp() {
                 svgRef={svgRef}
                 equipment={equipment}
                 defects={defects}
+                edgeAllowance={edgeAllowance}
               />
             ) : (
               <div className={`drawing-empty ${result.status === "no-solution" ? "error" : ""}`}>
