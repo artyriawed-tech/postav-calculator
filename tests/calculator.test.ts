@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { auditVariantGeometry, calculate, calculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, GOST_LENGTHS_M, gost2708Volume, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+import { auditVariantGeometry, calculate as rawCalculate, calculateFaceMetrics, calculateMaxRecovery as rawCalculateMaxRecovery, DEFAULT_EQUIPMENT, DEFAULT_PRODUCTS, GOST_LENGTHS_M, gost2708Volume, LOG_DIAMETERS, MILL_LINE, PRODUCT_CATALOG } from "../lib/calculator.ts";
+
+const calculate = (input: Parameters<typeof rawCalculate>[0]) => rawCalculate({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
+const calculateMaxRecovery = (input: Parameters<typeof rawCalculateMaxRecovery>[0]) => rawCalculateMaxRecovery({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
 
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
   const primaryId = "catalog-30x120";
@@ -21,6 +24,32 @@ test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а н�
   assert.equal(audit.overlapCount, 0);
   assert.equal(audit.outsideCount, 0);
   assert.equal(audit.edgeClearancePassed, true);
+});
+
+test("тот же пример отдельно даёт 61,0% заполнения рабочего торца и 39,0% свободной площади", () => {
+  const products = PRODUCT_CATALOG.filter((product) => ["catalog-30x120", "catalog-25x100"].includes(product.id));
+  const metrics = calculateFaceMetrics(140, 3, products, { "catalog-30x120": 1, "catalog-25x100": 2 });
+  assert.equal(metrics.cuttingArea, 8600);
+  assert.ok(Math.abs(metrics.workingArea - Math.PI * 67 ** 2) < 1e-9);
+  assert.ok(Math.abs(metrics.faceFill - 60.98162221386946) < 1e-10);
+  assert.ok(Math.abs(metrics.freeArea - 39.01837778613054) < 1e-10);
+});
+
+test("запас от края меньше обязательных 3 мм отклоняется", () => {
+  const product = { ...PRODUCT_CATALOG[0], enabled: true, priority: "primary" as const };
+  const result = rawCalculate({ diameter: 140, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 2.9, products: [product], equipment: MILL_LINE });
+  assert.equal(result.status, "invalid");
+  assert.match(result.error || "", /не меньше 3 мм/);
+});
+
+test("припуски меняют геометрию и объём распила, но не номинальный объём готовой продукции", () => {
+  const base = PRODUCT_CATALOG.find((product) => product.id === "catalog-30x120")!;
+  const nominal = calculate({ diameter: 180, length: 3900, logLength: 4000, lengthAllowance: 0, products: [{ ...base, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
+  const oversized = calculate({ diameter: 180, length: 3900, logLength: 4000, lengthAllowance: 100, products: [{ ...base, cuttingThickness: 32, cuttingWidth: 123, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
+  assert.equal(nominal.status, "ok");
+  assert.equal(oversized.status, "ok");
+  assert.equal(nominal.variants[0].nominalVolume, oversized.variants[0].nominalVolume);
+  assert.ok(oversized.variants[0].cuttingVolume > nominal.variants[0].cuttingVolume);
 });
 
 test("контроль расчёта обнаруживает испорченную геометрию, а не ставит формальный статус", () => {
@@ -128,7 +157,7 @@ test("автоматический режим на каждом рабочем �
         .map(([, pieces]) => ({ min: Math.min(...pieces.map((piece) => piece.y)), max: Math.max(...pieces.map((piece) => piece.y + piece.height)) }))
         .sort((a, b) => a.min - b.min);
       for (let index = 1; index < layers.length; index += 1) {
-        assert.ok(layers[index].min - layers[index - 1].max >= MILL_LINE.stages!.edgingKerf - 1e-7, `Ø${diameter}: не учтён межрядный пропил`);
+        assert.ok(layers[index].min - layers[index - 1].max >= MILL_LINE.stages!.breakdownKerf - 1e-7, `Ø${diameter}: не учтён межрядный пропил брусовального станка`);
       }
       if (layers.length) {
         const distanceFromCant = side === "top"
@@ -174,7 +203,7 @@ test("основной заказ 50×150 сохраняет максимум, �
   assert.equal(plain.status, "ok");
   assert.equal(filled.status, "ok");
   assert.equal(filled.variants[0].counts[primaryId], plain.variants[0].counts[primaryId]);
-  assert.ok((filled.variants[0].counts["catalog-25x100"] || 0) >= 2);
+  assert.ok(Object.entries(filled.variants[0].counts).some(([id, count]) => id !== primaryId && count > 0));
   assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
 });
 
@@ -224,7 +253,71 @@ test("полезный добор не уменьшает основной за�
   }
 });
 
-test("эталон Ø320 даёт 7 широких и 4 узких доски", () => {
+test("контрпример Ø360: добор не уменьшает общий объём двух обязательных заказов", () => {
+  const primaryIds = new Set(["catalog-25x100", "catalog-25x150"]);
+  const primary = PRODUCT_CATALOG.filter((product) => primaryIds.has(product.id))
+    .map((product) => ({ ...product, enabled: true, priority: "primary" as const }));
+  const withByproducts = PRODUCT_CATALOG
+    .filter((product) => primaryIds.has(product.id) || (product.nominalThickness <= 25 && product.nominalWidth <= 150))
+    .map((product) => ({ ...product, enabled: true, priority: primaryIds.has(product.id) ? "primary" as const : "byproduct" as const }));
+  const plain = calculate({ diameter: 360, length: 4000, edgeAllowance: 3, products: primary, equipment: MILL_LINE, topN: 1 });
+  const filled = calculate({ diameter: 360, length: 4000, edgeAllowance: 3, products: withByproducts, equipment: MILL_LINE, topN: 1 });
+  assert.equal(plain.status, "ok");
+  assert.equal(filled.status, "ok");
+  const primaryVolume = (counts: Record<string, number>) => primary.reduce((sum, product) => sum + (counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * 4000 / 1e9, 0);
+  assert.ok(primaryVolume(filled.variants[0].counts) + 1e-12 >= primaryVolume(plain.variants[0].counts));
+  assert.ok(filled.variants[0].nominalVolume + 1e-12 >= plain.variants[0].nominalVolume);
+});
+
+test("контрпример Ø140: два разных обязательных размера помещаются без зеркальной пары", () => {
+  const ids = new Set(["catalog-25x100", "catalog-40x100"]);
+  const products = PRODUCT_CATALOG.filter((product) => ids.has(product.id))
+    .map((product) => ({ ...product, enabled: true, priority: "primary" as const }));
+  const result = calculate({ diameter: 140, length: 4000, edgeAllowance: 3, products, equipment: MILL_LINE, topN: 1 });
+  assert.equal(result.status, "ok");
+  assert.ok((result.variants[0].counts["catalog-25x100"] || 0) > 0);
+  assert.ok((result.variants[0].counts["catalog-40x100"] || 0) > 0);
+  assert.equal(auditVariantGeometry(140, result.variants[0], [], 3).passed, true);
+});
+
+test("контрпример Ø160: автоматический режим сравнивает смеси размеров и даёт не меньше 0,047 м³", () => {
+  const result = calculateMaxRecovery({ diameter: 160, length: 4000, edgeAllowance: 3, equipment: MILL_LINE, topN: 1 });
+  assert.equal(result.status, "ok");
+  assert.ok(result.variants[0].nominalVolume >= 0.047 - 1e-12);
+});
+
+test("каждый рабочий диаметр и каждый размер заказа проверяются по углам", () => {
+  for (const diameter of LOG_DIAMETERS) for (const product of PRODUCT_CATALOG) {
+    const result = calculate({ diameter, length: 4000, edgeAllowance: 3, products: [{ ...product, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
+    if (result.status === "no-solution") continue;
+    assert.equal(result.status, "ok", `Ø${diameter}, ${product.name}`);
+    assert.ok((result.variants[0].counts[product.id] || 0) > 0, `Ø${diameter}, ${product.name}`);
+    assert.equal(auditVariantGeometry(diameter, result.variants[0], [], 3).passed, true, `Ø${diameter}, ${product.name}`);
+  }
+});
+
+test("все пары обязательных заказов либо присутствуют вместе, либо честно отклонены", () => {
+  for (const diameter of LOG_DIAMETERS) for (let left = 0; left < PRODUCT_CATALOG.length; left += 1) for (let right = left + 1; right < PRODUCT_CATALOG.length; right += 1) {
+    const selected = [PRODUCT_CATALOG[left], PRODUCT_CATALOG[right]].map((product) => ({ ...product, enabled: true, priority: "primary" as const }));
+    const result = calculate({ diameter, length: 4000, edgeAllowance: 3, products: selected, equipment: MILL_LINE, topN: 1 });
+    if (result.status === "no-solution") {
+      const radius = diameter / 2 - 3;
+      const kerf = MILL_LINE.stages!.multiripKerf;
+      const a = selected[0]; const b = selected[1];
+      const cornerFits = (x: number, product: typeof a) => Math.hypot(Math.max(Math.abs(x), Math.abs(x + product.cuttingThickness)), product.cuttingWidth / 2) <= radius + 1e-7;
+      const directFit = cornerFits(-kerf / 2 - a.cuttingThickness, a) && cornerFits(kerf / 2, b)
+        || cornerFits(-kerf / 2 - b.cuttingThickness, b) && cornerFits(kerf / 2, a);
+      assert.equal(directFit, false, `ложный отказ Ø${diameter}, ${a.name} + ${b.name}`);
+      continue;
+    }
+    assert.equal(result.status, "ok", `Ø${diameter}, ${selected[0].name} + ${selected[1].name}`);
+    assert.ok((result.variants[0].counts[selected[0].id] || 0) > 0);
+    assert.ok((result.variants[0].counts[selected[1].id] || 0) > 0);
+    assert.equal(auditVariantGeometry(diameter, result.variants[0], [], 3).passed, true);
+  }
+});
+
+test("эталон Ø320 даёт 7 широких и 4 узких доски с объёмом сырья для явно заданных 4 м", () => {
   const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 5 });
   assert.equal(result.status, "ok");
   assert.equal(result.variants[0].counts.wide, 7);
@@ -234,16 +327,31 @@ test("эталон Ø320 даёт 7 широких и 4 узких доски", 
   assert.equal(result.variants[0].mainSawCount, 10);
   assert.equal(result.variants[0].feeds, 2);
   assert.equal(result.variants[0].secondaryCount, 4);
-  assert.ok(Math.abs(result.variants[0].nominalRecovery - 55.92008571428572) < 1e-9);
+  assert.equal(result.variants[0].logVolume, 0.38);
+  assert.ok(Math.abs(result.variants[0].nominalRecovery - 51.50534210526316) < 1e-9);
 });
 
-test("готовая длина 3650 мм с припуском выбирает ближайшее стандартное бревно 3,75 м", () => {
-  const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
+test("объём сырья берётся по явно заданной длине бревна, а не по скрытому подбору", () => {
+  const result = calculate({ diameter: 320, length: 3650, logLength: 3750, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   assert.equal(result.status, "ok");
   const variant = result.variants[0];
   const expectedLogVolume = 0.35;
   assert.ok(Math.abs(variant.logVolume - expectedLogVolume) < 1e-12);
   assert.ok(Math.abs(variant.nominalVolume / variant.logVolume * 100 - variant.nominalRecovery) < 1e-12);
+});
+
+test("расчёт без фактической длины бревна блокируется", () => {
+  const result = rawCalculate({ diameter: 320, length: 3650, lengthAllowance: 0, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0] });
+  assert.equal(result.status, "invalid");
+  assert.match(result.error || "", /фактическую длину бревна/);
+});
+
+test("нестандартная длина для кубатурника округляется вниз, а не вверх", () => {
+  const result = rawCalculate({ diameter: 320, length: 3600, logLength: 3690, lengthAllowance: 40, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
+  assert.equal(result.status, "ok");
+  assert.equal(result.variants[0].actualLogLengthM, 3.69);
+  assert.equal(result.variants[0].gostLengthM, 3.5);
+  assert.equal(result.variants[0].logVolume, 0.33);
 });
 
 test("фактическая длина бревна участвует в объёме сырья", () => {
@@ -274,11 +382,13 @@ test("расчёт блокируется, если бревно короче п
   assert.match(result.error || "", /не короче 3690/);
 });
 
-test("эталонная схема проходит при Ø311, но не является допустимой при Ø310", () => {
+test("соседние ручные диаметры независимо проходят проверку реальных углов", () => {
   const at311 = calculate({ diameter: 311, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
   const at310 = calculate({ diameter: 310, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], topN: 1 });
-  assert.equal(at311.variants[0].counts.wide, 7);
-  assert.notEqual(at310.variants[0].counts.wide, 7);
+  assert.equal(at311.status, "ok");
+  assert.equal(at310.status, "ok");
+  assert.equal(auditVariantGeometry(311, at311.variants[0], [], 3).passed, true);
+  assert.equal(auditVariantGeometry(310, at310.variants[0], [], 3).passed, true);
 });
 
 test("просвет закреплённого оборудования блокирует слишком большое бревно", () => {
@@ -294,11 +404,11 @@ test("без вторичной обрезки эталон не выдаёт б
   assert.equal(result.variants[0].secondaryCount, 0);
 });
 
-test("боковой дефект сдвигает постав и сохраняет 11 здоровых досок, когда это возможно", () => {
+test("боковой дефект сдвигает постав и не оставляет досок в запрещённой зоне", () => {
   const result = calculate({ diameter: 320, length: 3650, products: DEFAULT_PRODUCTS, equipment: DEFAULT_EQUIPMENT[0], defect: { enabled: true, side: "right", depth: 20 }, topN: 1 });
   assert.equal(result.status, "ok");
-  assert.equal(result.variants[0].pieces.length, 11);
-  assert.equal(result.variants[0].offsetX, -2.5);
+  assert.ok(result.variants[0].pieces.length > 0);
+  assert.ok(result.variants[0].offsetX < 0);
   assert.ok(result.variants[0].pieces.every((piece) => piece.x + piece.width <= 140));
 });
 

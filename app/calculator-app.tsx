@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
+  calculateFaceMetrics,
   calculateMaxRecovery,
+  GOST_LENGTHS_M,
   LOG_DIAMETERS,
   MILL_LINE,
   PRODUCT_CATALOG,
@@ -15,7 +17,7 @@ import {
   type Variant,
 } from "../lib/calculator";
 
-type DrawingMode = "final" | "first" | "second";
+type DrawingMode = "final" | "breakdown" | "multirip" | "edging";
 const format = (value: number, digits = 1) =>
   value.toLocaleString("ru-RU", {
     minimumFractionDigits: digits,
@@ -137,12 +139,8 @@ function TechnicalDrawing({
   const scale = radiusPx / (diameter / 2);
   const workingRadiusPx = Math.max(0, radiusPx - edgeAllowance * scale);
   const productMap = new Map(products.map((product) => [product.id, product]));
-  const pieces = variant.pieces.filter(
-    (piece) =>
-      mode === "final" ||
-      (mode === "first"
-        ? piece.id.startsWith("cap")
-        : piece.id.startsWith("row")),
+  const pieces = variant.pieces.filter((piece) =>
+    mode === "final" || mode === "breakdown" || (mode === "edging" ? piece.id.startsWith("cap") : piece.id.startsWith("row")),
   );
   const toSvg = (piece: Piece) => ({
     x: center + piece.x * scale,
@@ -158,21 +156,69 @@ function TechnicalDrawing({
   );
   const rowMin = Math.min(...rowPieces.map((piece) => piece.x));
   const rowMax = Math.max(...rowPieces.map((piece) => piece.x + piece.width));
-  const cutXs = [
-    ...new Set(rowPieces.flatMap((piece) => [piece.x, piece.x + piece.width])),
-  ];
-  const cutYs = [
-    ...new Set(
-      capPieces
-        .flatMap((piece) => [piece.y, piece.y + piece.height])
-        .concat([
-          variant.offsetY - variant.cantHeight / 2,
-          variant.offsetY + variant.cantHeight / 2,
-        ]),
-    ),
-  ];
-  const chordHalfWidth = (y: number) =>
-    Math.sqrt(Math.max(0, (diameter / 2) ** 2 - y * y));
+  const chordHalfWidth = (y: number) => Math.sqrt(Math.max(0, (diameter / 2) ** 2 - y * y));
+  const capGroups = new Map<string, Piece[]>();
+  for (const piece of capPieces) {
+    const match = piece.id.match(/^(cap-(?:top|bottom)-\d+)-/);
+    if (match) capGroups.set(match[1], [...(capGroups.get(match[1]) || []), piece]);
+  }
+  const breakdownKerf = equipment.stages?.breakdownKerf ?? equipment.kerf;
+  const multiripKerf = equipment.stages?.multiripKerf ?? equipment.kerf;
+  const edgingKerf = equipment.stages?.edgingKerf ?? equipment.kerf;
+  const breakdownBands: Array<{ x: number; y: number; width: number; height: number }> = [];
+  for (const side of ["top", "bottom"] as const) {
+    const layers = [...capGroups.entries()]
+      .filter(([key]) => key.startsWith(`cap-${side}-`))
+      .map(([, layerPieces]) => ({ min: Math.min(...layerPieces.map((piece) => piece.y)), max: Math.max(...layerPieces.map((piece) => piece.y + piece.height)) }))
+      .sort((a, b) => side === "top" ? a.min - b.min : b.max - a.max);
+    let boundary = variant.offsetY + (side === "top" ? variant.cantHeight / 2 : -variant.cantHeight / 2);
+    for (const layer of layers) {
+      const low = side === "top" ? boundary : layer.max;
+      const high = side === "top" ? layer.min : boundary;
+      if (high > low + 1e-7) breakdownBands.push({ x: -chordHalfWidth((low + high) / 2), y: low, width: chordHalfWidth((low + high) / 2) * 2, height: high - low });
+      boundary = side === "top" ? layer.max : layer.min;
+    }
+    if (layers.length) {
+      const low = side === "top" ? boundary : boundary - breakdownKerf;
+      const high = side === "top" ? boundary + breakdownKerf : boundary;
+      const half = chordHalfWidth((low + high) / 2);
+      breakdownBands.push({ x: -half, y: low, width: half * 2, height: high - low });
+    } else {
+      const low = side === "top" ? boundary : boundary - breakdownKerf;
+      const high = side === "top" ? boundary + breakdownKerf : boundary;
+      const half = chordHalfWidth((low + high) / 2);
+      breakdownBands.push({ x: -half, y: low, width: half * 2, height: high - low });
+    }
+  }
+  const sortedRowPieces = [...rowPieces].sort((a, b) => a.x - b.x);
+  const multiripBands = sortedRowPieces.slice(1).map((piece, index) => {
+    const previous = sortedRowPieces[index];
+    return { x: previous.x + previous.width, y: variant.offsetY - variant.cantHeight / 2, width: piece.x - previous.x - previous.width, height: variant.cantHeight };
+  }).filter((band) => band.width > 1e-7);
+  if (sortedRowPieces.length) {
+    multiripBands.unshift({ x: sortedRowPieces[0].x - multiripKerf, y: variant.offsetY - variant.cantHeight / 2, width: multiripKerf, height: variant.cantHeight });
+    const last = sortedRowPieces.at(-1)!;
+    multiripBands.push({ x: last.x + last.width, y: variant.offsetY - variant.cantHeight / 2, width: multiripKerf, height: variant.cantHeight });
+  }
+  const edgingBands = [...capGroups.values()].flatMap((layerPieces) => {
+    const sorted = [...layerPieces].sort((a, b) => a.x - b.x);
+    const internal = sorted.slice(1).map((piece, index) => {
+      const previous = sorted[index];
+      return { x: previous.x + previous.width, y: piece.y, width: piece.x - previous.x - previous.width, height: piece.height };
+    }).filter((band) => band.width > 1e-7);
+    const first = sorted[0]; const last = sorted.at(-1)!;
+    return [
+      { x: first.x - edgingKerf, y: first.y, width: edgingKerf, height: first.height },
+      ...internal,
+      { x: last.x + last.width, y: last.y, width: edgingKerf, height: last.height },
+    ];
+  });
+  const bandRect = (band: { x: number; y: number; width: number; height: number }) => ({
+    x: center + band.x * scale,
+    y: center - (band.y + band.height) * scale,
+    width: band.width * scale,
+    height: band.height * scale,
+  });
   const productRows = products
     .filter((product) => product.enabled && (variant.counts[product.id] || 0) > 0)
     .sort((a, b) => Number(b.priority === "primary") - Number(a.priority === "primary"))
@@ -181,12 +227,7 @@ function TechnicalDrawing({
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
     );
   const productDisplayRows = productRows.slice(0, 6);
-  const cuttingFaceArea = products.reduce(
-    (sum, product) => sum + (variant.counts[product.id] || 0) * product.cuttingThickness * product.cuttingWidth,
-    0,
-  );
-  const workingFaceArea = Math.PI * Math.max(0, diameter / 2 - edgeAllowance) ** 2;
-  const faceFill = workingFaceArea > 0 ? cuttingFaceArea / workingFaceArea * 100 : 0;
+  const { faceFill, freeArea } = calculateFaceMetrics(diameter, edgeAllowance, products, variant.counts);
   const consideredSizes = optimizationMode === "auto"
     ? PRODUCT_CATALOG.length
     : products.filter((product) => product.enabled).length;
@@ -226,23 +267,12 @@ function TechnicalDrawing({
       })}
       <line x1="65" y1={center} x2="535" y2={center} className="axis" />
       <line x1={center} y1="65" x2={center} y2="535" className="axis" />
-      {mode === "first" && (
-        <g className="saw-lines">
-          {cutYs.map((y) => {
-            const half = chordHalfWidth(y);
-            return (
-              <line
-                key={y}
-                x1={center - half * scale}
-                x2={center + half * scale}
-                y1={center - y * scale}
-                y2={center - y * scale}
-              />
-            );
-          })}
+      {mode === "breakdown" && (
+        <g>
+          {breakdownBands.map((band, index) => <rect key={index} {...bandRect(band)} className="saw-kerf" fill="#202223" opacity="0.72" clipPath="url(#log-clip)" />)}
         </g>
       )}
-      {mode === "second" && (
+      {mode === "multirip" && (
         <>
           <rect
             x={center - radiusPx}
@@ -252,19 +282,10 @@ function TechnicalDrawing({
             className="cant-guide"
             clipPath="url(#log-clip)"
           />
-          <g className="saw-lines">
-            {cutXs.map((x) => (
-              <line
-                key={x}
-                x1={center + x * scale}
-                x2={center + x * scale}
-                y1={center - (variant.offsetY + variant.cantHeight / 2) * scale}
-                y2={center - (variant.offsetY - variant.cantHeight / 2) * scale}
-              />
-            ))}
-          </g>
+          <g>{multiripBands.map((band, index) => <rect key={index} {...bandRect(band)} className="saw-kerf" fill="#202223" opacity="0.72" />)}</g>
         </>
       )}
+      {mode === "edging" && <g>{edgingBands.map((band, index) => <rect key={index} {...bandRect(band)} className="saw-kerf" fill="#202223" opacity="0.72" />)}</g>}
       {pieces.map((piece) => {
         const box = toSvg(piece);
         const product = productMap.get(piece.productId)!;
@@ -371,9 +392,11 @@ function TechnicalDrawing({
         <text x="14" y="24" className="card-header-title">
           {mode === "final"
             ? "ИТОГОВЫЙ ПОСТАВ"
-            : mode === "first"
-              ? "КРОМКООБРЕЗНОЙ СТАНОК"
-              : "МНОГОПИЛ"}
+            : mode === "breakdown"
+              ? "БРУСОВАЛЬНЫЙ СТАНОК"
+              : mode === "multirip"
+                ? "МНОГОПИЛ"
+                : "КРОМКООБРЕЗНОЙ СТАНОК"}
         </text>
         <text x="546" y="23" textAnchor="end" className="card-header-meta">
           Ø{format(diameter, 0)} · {variant.pieces.length} ШТ.
@@ -392,7 +415,7 @@ function TechnicalDrawing({
             СВОБОДНО ПО ПЛОЩАДИ
           </text>
           <text x="12" y="94" className="recovery-value">
-            {format(Math.max(0, 100 - faceFill))}%
+            {format(freeArea)}%
           </text>
           <text x="146" y="18" className="card-label">
             ПРОДУКЦИЯ
@@ -420,7 +443,7 @@ function TechnicalDrawing({
             КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
           </text>
           <text x="11" y="96" className="equipment-label">
-            {edgeAllowance > 0 ? `ЗАПАС ОТ КРАЯ · ${format(edgeAllowance)} ММ` : "ЗАПАС ОТ КРАЯ · НЕ ЗАДАН"}
+            ЗАПАС ОТ КРАЯ · {format(edgeAllowance)} ММ
           </text>
           <line x1="11" y1="112" x2="161" y2="112" className="result-divider" />
           <text x="11" y="131" className="equipment-label">СПРАВОЧНЫЙ УЧЁТ СЫРЬЯ</text>
@@ -432,8 +455,8 @@ function TechnicalDrawing({
           <text x="12" y="18" className="yield-proof-label">ПОДБОР ПРОДУКЦИИ</text>
           <text x="12" y="43" className="yield-proof-value">{consideredSizes}</text>
           <text x="12" y="59" className="yield-proof-label">РАЗМЕРОВ ПРОВЕРЕНО</text>
-          <text x="116" y="18" className="yield-proof-label">{optimizationMode === "auto" ? "МАКСИМАЛЬНАЯ ВЫГОДА" : "ОСНОВНОЙ ЗАКАЗ + ДОБОР"}</text>
-          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "ВЫБРАН ЛУЧШИЙ НАЙДЕННЫЙ ПОСТАВ" : `ОСНОВНЫХ ЗАКАЗОВ В ПОСТАВЕ · ${primaryOrderCount}`}</text>
+          <text x="116" y="18" className="yield-proof-label">{optimizationMode === "auto" ? "МАКСИМАЛЬНЫЙ НОМИНАЛЬНЫЙ ОБЪЁМ" : "ОСНОВНОЙ ЗАКАЗ + ДОБОР"}</text>
+          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "СРАВНЁН ВЕСЬ ЗАДАННЫЙ АССОРТИМЕНТ" : `ОСНОВНЫХ ЗАКАЗОВ В ПОСТАВЕ · ${primaryOrderCount}`}</text>
           <text x="116" y="54" className="yield-proof-label">СВОБОДНЫЕ ЗОНЫ ПРОВЕРЕНЫ ДЛЯ ДОБОРА</text>
         </g>
       </g>
@@ -443,16 +466,17 @@ function TechnicalDrawing({
 
 export function CalculatorApp() {
   const [diameter, setDiameter] = useState<number | null>(null);
-  const logLength = 4000;
+  const [logLength, setLogLength] = useState(4000);
   const [logAdded, setLogAdded] = useState(true);
-  const [finishedLength, setFinishedLength] = useState<number | null>(null);
-  const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
+  const [finishedLength, setFinishedLength] = useState<number | null>(4000);
+  const [lengthAllowance, setLengthAllowance] = useState<number | null>(0);
+  const [thicknessAllowance, setThicknessAllowance] = useState(0);
+  const [widthAllowance, setWidthAllowance] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
   const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
   const [additionalOrderOpen, setAdditionalOrderOpen] = useState(false);
   const [edgeAllowance, setEdgeAllowance] = useState(3);
-  const [edgeAllowanceEnabled, setEdgeAllowanceEnabled] = useState(true);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
@@ -467,6 +491,7 @@ export function CalculatorApp() {
   const svgRef = useRef<SVGSVGElement>(null);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- restoring an external device-local preference */
     try {
       const saved = localStorage.getItem("postav-equipment-v4");
       if (saved) {
@@ -481,6 +506,7 @@ export function CalculatorApp() {
     } finally {
       setEquipmentLoaded(true);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   useEffect(() => {
@@ -495,19 +521,24 @@ export function CalculatorApp() {
   const equipmentReady =
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
   const logReady = logAdded && positive(diameter) && positive(logLength);
-  const effectiveEdgeAllowance = edgeAllowanceEnabled ? edgeAllowance : 0;
-  const edgeAllowanceReady = !edgeAllowanceEnabled || (Number.isFinite(edgeAllowance) && edgeAllowance >= 0 && !!diameter && edgeAllowance < diameter / 2);
+  const effectiveEdgeAllowance = edgeAllowance;
+  const edgeAllowanceReady = Number.isFinite(edgeAllowance) && edgeAllowance >= 3 && !!diameter && edgeAllowance < diameter / 2;
+  const calculationProducts = useMemo(() => products.map((product) => ({
+    ...product,
+    cuttingThickness: product.nominalThickness + thicknessAllowance,
+    cuttingWidth: product.nominalWidth + widthAllowance,
+  })), [products, thicknessAllowance, widthAllowance]);
   const productsReady =
-    products.some((product) => product.enabled) &&
-    (orderMode === "auto" || products.some((product) => product.enabled && product.priority === "primary")) &&
-    products.filter((product) => product.enabled).every(
+    calculationProducts.some((product) => product.enabled) &&
+    (orderMode === "auto" || calculationProducts.some((product) => product.enabled && product.priority === "primary")) &&
+    calculationProducts.filter((product) => product.enabled).every(
       (product) =>
         positive(product.nominalThickness) &&
         positive(product.nominalWidth) &&
         product.cuttingThickness >= product.nominalThickness &&
         product.cuttingWidth >= product.nominalWidth,
     );
-  const orderReady = productsReady && (lengthAllowance === null || lengthAllowance >= 0);
+  const orderReady = productsReady && positive(finishedLength) && lengthAllowance !== null && lengthAllowance >= 0 && finishedLength! + lengthAllowance <= logLength;
   const readyToCalculate = equipmentReady && logReady && edgeAllowanceReady && productsReady && orderReady;
 
   const missingMessage = !equipment
@@ -524,8 +555,8 @@ export function CalculatorApp() {
             ? "Заполните толщину и ширину каждого размера продукции."
             : "";
 
-  const calculationLength = finishedLength ?? logLength ?? 1000;
-  const calculationLogLength = logLength ?? calculationLength;
+  const calculationLength = finishedLength ?? 0;
+  const calculationLogLength = logLength;
 
   const result: Calculation = useMemo(() => {
     if (!readyToCalculate || !equipment) return { status: "invalid", variants: [], error: missingMessage };
@@ -539,15 +570,15 @@ export function CalculatorApp() {
       defects,
       topN: 1,
     };
-    if (orderMode !== "auto") return calculate({ ...common, products });
+    if (orderMode !== "auto") return calculate({ ...common, products: calculationProducts });
 
-    return calculateMaxRecovery(common);
-  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, effectiveEdgeAllowance, products, defects, missingMessage, orderMode]);
+    return calculateMaxRecovery({ ...common, products: calculationProducts });
+  }, [readyToCalculate, equipment, diameter, calculationLength, calculationLogLength, lengthAllowance, effectiveEdgeAllowance, calculationProducts, defects, missingMessage, orderMode]);
   const variant = result.variants[0];
 
   const addEquipment = () => {
     setEquipmentDraft({
-      id: `equipment-${Date.now()}`,
+      id: `equipment-${equipmentList.length + 1}`,
       name: "",
       maxSaws: 0,
       kerf: 0,
@@ -596,38 +627,30 @@ export function CalculatorApp() {
     setEquipmentId(item.id);
     closeEquipment();
   };
-  const deleteEquipment = () => {
-    if (!equipmentDraft || equipmentDraftMode !== "edit") return;
-    const items = equipmentList.filter((item) => item.id !== equipmentDraft.id);
-    setEquipmentList(items);
-    setEquipmentId(items[0]?.id || "");
-    closeEquipment();
-  };
-
   const addLog = () => {
     setLogAdded(true);
     setDiameter(null);
     setEdgeAllowance(3);
-    setEdgeAllowanceEnabled(true);
     setDefects([]);
   };
   const removeLog = () => {
     setLogAdded(true);
     setDiameter(null);
     setEdgeAllowance(3);
-    setEdgeAllowanceEnabled(true);
     setDefects([]);
   };
   const resetCalculation = () => {
     removeLog();
     setProducts([]);
-    setFinishedLength(null);
-    setLengthAllowance(null);
+    setLogLength(4000);
+    setFinishedLength(4000);
+    setLengthAllowance(0);
+    setThicknessAllowance(0);
+    setWidthAllowance(0);
     setIncludeByproducts(true);
     setOrderMode(null);
     setAdditionalOrderOpen(false);
     setEdgeAllowance(3);
-    setEdgeAllowanceEnabled(true);
     setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
@@ -656,20 +679,6 @@ export function CalculatorApp() {
     const primaryIds = products.filter((product) => product.priority === "primary").map((product) => product.id);
     if (primaryIds.length) setProducts(productsForOrders(primaryIds, enabled));
   };
-  const updateProduct = (id: string, patch: Partial<Product>) =>
-    setProducts((items) =>
-      items.map((item) => {
-        if (item.id !== id) return item;
-        const next = { ...item, ...patch };
-        return {
-          ...next,
-          name:
-            next.nominalThickness > 0 && next.nominalWidth > 0
-              ? `${next.nominalThickness} × ${next.nominalWidth} мм`
-              : "Размер продукции",
-        };
-      }),
-    );
   const chooseAnotherPrimaryProduct = () => {
     setProducts([]);
     setAdditionalOrderOpen(false);
@@ -851,20 +860,26 @@ export function CalculatorApp() {
                     </div>
                   )}
                   <p className="field-help">Измеряйте тонкий торец без коры. До Ø20 см достаточно одного диаметра; крупнее — измерьте в двух направлениях и возьмите среднее.</p>
+                  <div className="log-length-panel">
+                    <div>
+                      <strong>Фактическая длина бревна</strong>
+                      <span>Она определяет табличный объём сырья по ГОСТ 2708-75 и поэтому влияет на процент выхода.</span>
+                    </div>
+                    <select value={logLength} onChange={(event) => setLogLength(Number(event.target.value))} aria-label="Фактическая длина бревна">
+                      {GOST_LENGTHS_M.map((length) => <option key={length} value={length * 1000}>{format(length, 2)} м</option>)}
+                    </select>
+                  </div>
                   <div className="log-safety-panel">
-                    <label className="defect-toggle">
-                      <input type="checkbox" checked={edgeAllowanceEnabled} onChange={(event) => setEdgeAllowanceEnabled(event.target.checked)} />
+                    <div className="edge-allowance-panel">
                       <div>
-                        <strong>Оставить запас от коры</strong>
-                        <span>Углы досок не подойдут к краю бревна ближе заданного расстояния</span>
+                        <strong>Обязательный запас от коры</strong>
+                        <span>Каждый угол доски должен быть не ближе 3 мм к окружности тонкого торца.</span>
                       </div>
-                    </label>
-                    {edgeAllowanceEnabled && (
                       <label className="edge-allowance-input">
                         <span>Запас</span>
                         <input
                           type="number"
-                          min="0"
+                          min="3"
                           step="0.5"
                           value={edgeAllowance}
                           aria-label="Запас от края бревна в миллиметрах"
@@ -872,7 +887,7 @@ export function CalculatorApp() {
                         />
                         <b>мм</b>
                       </label>
-                    )}
+                    </div>
                     <div className="damage-choice">
                       <div>
                         <strong>Гниль или повреждение</strong>
@@ -902,7 +917,7 @@ export function CalculatorApp() {
                           </div>
                         ))}
                         {defects.length < 4 && <button className="add-defect-button" onClick={addDefect}>＋ Добавить ещё сторону</button>}
-                        <p className="defect-warning">Программа полностью исключит указанную зону из досок.</p>
+                        <p className="defect-warning">Модель считает, что эта плоская запрещённая зона идёт по всей длине бревна. Для локальной гнили нужен отдельный продольный замер.</p>
                       </div>
                     )}
                   </div>
@@ -914,7 +929,7 @@ export function CalculatorApp() {
               <div className="section-title with-state">
                 <div>
                   <h3>Что нужно получить</h3>
-                  <p>Сначала выберите цель: максимум выгоды или выполнение конкретного заказа.</p>
+                  <p>Сначала выберите цель: максимум объёма продукции или выполнение конкретного заказа.</p>
                 </div>
               </div>
 
@@ -926,8 +941,8 @@ export function CalculatorApp() {
                 <>
                   <div className="calculation-mode-switch" role="group" aria-label="Цель расчёта">
                     <button className={orderMode === "auto" ? "active" : ""} onClick={selectAutomaticYield}>
-                      <strong>Максимальная выгода</strong>
-                      <small>Программа сама подберёт размеры</small>
+                      <strong>Максимальный объём</strong>
+                      <small>Без цен: программа максимизирует номинальный объём</small>
                     </button>
                     <span className="mode-or">или</span>
                     <button className={orderMode === "primary" ? "active" : ""} onClick={selectPrimaryMode}>
@@ -936,7 +951,20 @@ export function CalculatorApp() {
                     </button>
                   </div>
                   {orderMode === null && (
-                    <p className="mode-hint">Выберите, что сейчас важнее: максимальная выгода со всего бревна или конкретный заказ.</p>
+                    <p className="mode-hint">Выберите, что сейчас важнее: наибольший номинальный объём со всего бревна или конкретный заказ.</p>
+                  )}
+                  {orderMode !== null && (
+                    <div className="production-allowances">
+                      <strong>Длина и размеры распила</strong>
+                      <div className="allowance-grid">
+                        <NumberField label="Готовая длина, мм" value={finishedLength} onChange={setFinishedLength} required />
+                        <NumberField label="Припуск по длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
+                        <NumberField label="Припуск к толщине, мм" value={thicknessAllowance} onChange={(value) => setThicknessAllowance(value ?? 0)} step={0.1} />
+                        <NumberField label="Припуск к ширине, мм" value={widthAllowance} onChange={(value) => setWidthAllowance(value ?? 0)} step={0.1} />
+                      </div>
+                      <p>Размер распила = номинальный размер + указанный припуск. Сейчас: +{format(thicknessAllowance)} мм к толщине и +{format(widthAllowance)} мм к ширине.</p>
+                      {finishedLength !== null && lengthAllowance !== null && finishedLength + lengthAllowance > logLength && <p className="input-error">Готовая длина с припуском больше длины бревна.</p>}
+                    </div>
                   )}
                   {orderMode === "primary" && products.length > 0 && (
                     <div className="selected-primary-order">
@@ -963,8 +991,8 @@ export function CalculatorApp() {
                     </div>
                   )}
                   {orderMode === "primary" && products.length > 0 && (
-                    <label className="byproduct-toggle">
-                      <input type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
+                    <label className="byproduct-toggle" htmlFor="include-byproducts">
+                      <input id="include-byproducts" aria-label="Заполнять свободные места" type="checkbox" checked={includeByproducts} onChange={(event) => changeByproducts(event.target.checked)} />
                       <span>
                         <strong>Заполнять свободные места</strong>
                         <small>Добавлять меньшие размеры из ассортимента, если они повышают полезный выход.</small>
@@ -982,6 +1010,15 @@ export function CalculatorApp() {
                       ))}
                     </div>
                   )}
+                  {variant && (
+                    <details className="metric-help">
+                      <summary>Как считаются проценты и объёмы</summary>
+                      <p><b>Заполнение торца</b> = площадь размеров распила ÷ площадь рабочей окружности после запаса.</p>
+                      <p><b>Полезный выход продукции</b> = номинальный объём готовых досок ÷ табличный объём бревна по ГОСТ 2708-75.</p>
+                      <p><b>Свободная площадь</b> = 100% − заполнение торца. Это не объём отходов.</p>
+                      <p>Объём сырья: {format(variant.logVolume, 3)} м³; класс кубатурника Ø{variant.gostDiameterCm} см × {format(variant.gostLengthM, 2)} м.</p>
+                    </details>
+                  )}
                 </>
               )}
             </section>
@@ -994,7 +1031,7 @@ export function CalculatorApp() {
               <h2>Чертёж распила</h2>
               <p className="drawing-context">
                 {variant && diameter
-                  ? `Бревно Ø${format(diameter, 0)} мм · получаем ${variant.pieces.length} шт. · выход по ГОСТ ${format(variant.nominalRecovery)}%`
+                  ? `Бревно Ø${format(diameter, 0)} мм · получаем ${variant.pieces.length} шт. · полезный выход продукции ${format(variant.nominalRecovery)}%`
                   : "Чертёж появится, когда исходные данные будут заполнены"}
               </p>
             </div>
@@ -1002,8 +1039,9 @@ export function CalculatorApp() {
               <>
                 <div className="drawing-tabs">
                   <button className={drawingMode === "final" ? "active" : ""} onClick={() => setDrawingMode("final")}>Итог</button>
-                  <button className={drawingMode === "first" ? "active" : ""} onClick={() => setDrawingMode("first")}>Кромкообрезка</button>
-                  <button className={drawingMode === "second" ? "active" : ""} onClick={() => setDrawingMode("second")}>Многопил</button>
+                  <button className={drawingMode === "breakdown" ? "active" : ""} onClick={() => setDrawingMode("breakdown")}>Брусовальный</button>
+                  <button className={drawingMode === "multirip" ? "active" : ""} onClick={() => setDrawingMode("multirip")}>Многопил</button>
+                  <button className={drawingMode === "edging" ? "active" : ""} onClick={() => setDrawingMode("edging")}>Кромкообрезной</button>
                 </div>
                 <div className="toolbar-actions">
                   <button aria-label="Уменьшить чертёж" onClick={() => setZoom((value) => Math.max(0.5, value - 0.1))}>−</button>
@@ -1021,7 +1059,7 @@ export function CalculatorApp() {
               <TechnicalDrawing
                 diameter={diameter}
                 variant={variant}
-                products={products}
+                products={calculationProducts}
                 mode={drawingMode}
                 zoom={zoom}
                 svgRef={svgRef}
@@ -1053,8 +1091,8 @@ export function CalculatorApp() {
       </section>
 
       {equipmentDraft && (
-        <div className="modal-backdrop" onMouseDown={closeEquipment}>
-          <section className="equipment-modal" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="modal-backdrop">
+          <section className="equipment-modal">
             <div className="modal-heading">
               <div>
                 <h2>Пропилы оборудования</h2>
