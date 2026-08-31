@@ -372,7 +372,7 @@ function TechnicalDrawing({
               : "МНОГОПИЛ"}
         </text>
         <text x="546" y="23" textAnchor="end" className="card-header-meta">
-          Ø{format(diameter, 0)} · {format(variant.gostLengthM)} М · {variant.pieces.length} ШТ.
+          Ø{format(diameter, 0)} · {variant.pieces.length} ШТ.
         </text>
         <g transform="translate(14 50)">
           <rect width="348" height="108" rx="3" className="result-group" />
@@ -419,8 +419,8 @@ function TechnicalDrawing({
             {edgeAllowance > 0 ? `ЗАПАС ОТ КРАЯ · ${format(edgeAllowance)} ММ` : "ЗАПАС ОТ КРАЯ · НЕ ЗАДАН"}
           </text>
           <line x1="11" y1="112" x2="161" y2="112" className="result-divider" />
-          <text x="11" y="131" className="equipment-label">РАСЧЁТ СЫРЬЯ ПО ГОСТ 2708-75</text>
-          <text x="11" y="149" className="equipment-spec">Ø{variant.gostDiameterCm} СМ × {format(variant.gostLengthM)} М</text>
+          <text x="11" y="131" className="equipment-label">СЫРЬЁ ПО ГОСТ 2708-75</text>
+          <text x="11" y="149" className="equipment-spec">КЛАСС · Ø{variant.gostDiameterCm} СМ</text>
           <text x="11" y="168" className="equipment-name">ОБЪЁМ · {format(variant.logVolume, 3)} М³</text>
         </g>
         <g transform="translate(14 158)">
@@ -861,19 +861,23 @@ export function CalculatorApp() {
                         <b>мм</b>
                       </label>
                     )}
-                    <label className="defect-toggle">
-                      <input type="checkbox" checked={defects.length > 0} onChange={(event) => toggleDefects(event.target.checked)} />
+                    <div className="damage-choice">
                       <div>
-                        <strong>Есть гниль или повреждение</strong>
-                        <span>Отметьте сторону и глубину повреждённой зоны</span>
+                        <strong>Гниль или повреждение</strong>
+                        <span>Есть ли на бревне место, которое нельзя пускать в доску?</span>
                       </div>
-                    </label>
+                      <div className="binary-choice" role="group" aria-label="Есть ли гниль или повреждение">
+                        <button className={defects.length === 0 ? "active" : ""} onClick={() => toggleDefects(false)}>Нет</button>
+                        <button className={defects.length > 0 ? "active" : ""} onClick={() => toggleDefects(true)}>Есть</button>
+                      </div>
+                    </div>
                     {defects.length > 0 && (
                       <div className="defects-list">
+                        <p className="damage-instruction">Укажите, где начинается повреждённая древесина.</p>
                         {defects.map((defect, index) => (
                           <div className="defect-row" key={`${defect.side}-${index}`}>
                             <label>
-                              <span>Сторона</span>
+                              <span>С какой стороны</span>
                               <select value={defect.side} onChange={(event) => updateDefect(index, { side: event.target.value as Defect["side"] })}>
                                 <option value="right">Справа</option>
                                 <option value="left">Слева</option>
@@ -881,12 +885,12 @@ export function CalculatorApp() {
                                 <option value="bottom">Снизу</option>
                               </select>
                             </label>
-                            <NumberField label="Глубина, мм" value={defect.depth || null} onChange={(depth) => updateDefect(index, { depth: depth ?? 0 })} />
+                            <NumberField label="Насколько вглубь, мм" value={defect.depth || null} onChange={(depth) => updateDefect(index, { depth: depth ?? 0 })} />
                             <button aria-label={`Удалить повреждение ${index + 1}`} onClick={() => removeDefect(index)}>×</button>
                           </div>
                         ))}
                         {defects.length < 4 && <button className="add-defect-button" onClick={addDefect}>＋ Добавить ещё сторону</button>}
-                        <p className="defect-warning">Без промышленного сканера зона считается повреждённой по всей длине бревна.</p>
+                        <p className="defect-warning">Программа полностью исключит указанную зону из досок.</p>
                       </div>
                     )}
                   </div>
@@ -913,6 +917,7 @@ export function CalculatorApp() {
                       <strong>Максимальная выгода</strong>
                       <small>Программа сама подберёт размеры</small>
                     </button>
+                    <span className="mode-or">или</span>
                     <button className={orderMode === "primary" ? "active" : ""} onClick={selectPrimaryMode}>
                       <strong>Выполнить заказ</strong>
                       <small>Сначала нужный размер доски</small>
@@ -971,7 +976,7 @@ export function CalculatorApp() {
               <h2>Чертёж распила</h2>
               <p className="drawing-context">
                 {variant && diameter
-                  ? `Бревно Ø${format(diameter, 0)} мм · ${format(variant.gostLengthM)} м · получаем ${variant.pieces.length} шт. · выход по ГОСТ ${format(variant.nominalRecovery)}%`
+                  ? `Бревно Ø${format(diameter, 0)} мм · получаем ${variant.pieces.length} шт. · выход по ГОСТ ${format(variant.nominalRecovery)}%`
                   : "Чертёж появится, когда исходные данные будут заполнены"}
               </p>
             </div>

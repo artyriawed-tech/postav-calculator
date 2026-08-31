@@ -233,17 +233,23 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .setup-note{fill:#696c6d;font-size:7px;font-weight:700}
 .setup-value{fill:#1c1e1f;font-size:10px;font-weight:800}
 
-/* One log block: optional bark clearance, defects, and a hidden ГОСТ length. */
+/* One log block: optional bark clearance and damaged wood. */
 .log-safety-panel{margin-top:12px;padding:14px;border:1px solid #bfc2c3;border-radius:9px;background:#ececea}
-.log-safety-panel>.defect-toggle+ .defect-toggle{margin-top:13px;padding-top:13px;border-top:1px solid #c7c9ca}
 .edge-allowance-input{display:grid;grid-template-columns:1fr 70px 22px;align-items:center;gap:0;margin:11px 0 0 26px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;overflow:hidden}
 .edge-allowance-input>span{padding-left:10px;color:#5f6263;font-size:10px;font-weight:800}
 .edge-allowance-input input{width:100%;min-width:0;height:40px;padding:7px;border:0;background:#fff;font-size:15px;font-weight:800;text-align:right;outline:none}
 .edge-allowance-input b{color:#66696a;font-size:9px}
-.log-extra-details select{width:100%;min-height:43px;padding:8px 10px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;color:#202223;font-size:14px;font-weight:800}
+.damage-choice{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-top:13px;padding-top:13px;border-top:1px solid #c7c9ca}
+.damage-choice strong,.damage-choice span{display:block}
+.damage-choice strong{font-size:12px}
+.damage-choice span{margin-top:4px;color:#5f6263;font-size:10px;line-height:1.4}
+.binary-choice{display:flex;padding:3px;border:1px solid #aeb1b2;border-radius:8px;background:#fff}
+.binary-choice button{min-width:48px;height:36px;padding:0 9px;border:0;border-radius:5px;background:transparent;color:#555859;font-size:10px;font-weight:800}
+.binary-choice button.active{background:#202223;color:#fff}
+.damage-instruction{margin:0 0 9px;color:#454849;font-size:10px;font-weight:800;line-height:1.4}
 
 /* Two permanent, obvious calculation routes. */
-.calculation-mode-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.calculation-mode-switch{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:stretch}
 .calculation-mode-switch button{min-height:76px;padding:12px;border:1.5px solid #8f9293;border-radius:9px;background:#fff;color:#202223;text-align:left}
 .calculation-mode-switch button:hover,.calculation-mode-switch button:focus-visible{border-color:#202223;outline:none}
 .calculation-mode-switch button.active{border-color:#202223;background:#202223;color:#fff}
@@ -251,6 +257,7 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .calculation-mode-switch strong{font-size:12px;line-height:1.25}
 .calculation-mode-switch small{margin-top:6px;color:#66696a;font-size:9px;line-height:1.35}
 .calculation-mode-switch button.active small{color:#d5d7d8}
+.mode-or{display:grid;place-items:center;color:#6d7071;font-size:9px;font-weight:800;text-transform:uppercase}
 .mode-hint{margin:11px 0 0;padding:11px 12px;border-left:3px solid #8f9293;background:#ececea;color:#4f5253;font-size:10px;line-height:1.45}
 .primary-catalog{margin-top:10px}
 .primary-catalog>strong{display:block;margin-bottom:11px;font-size:12px}
@@ -273,4 +280,8 @@ input::placeholder{color:#a0a3a4;font-weight:500}
   .catalog-picker{padding:12px}
   .calculation-mode-switch{grid-template-columns:1fr}
   .calculation-mode-switch button{min-height:68px}
+  .mode-or{min-height:16px}
+  .damage-choice{grid-template-columns:1fr}
+  .binary-choice{width:100%}
+  .binary-choice button{flex:1;min-height:40px}
 }
