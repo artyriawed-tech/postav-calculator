@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 
 async function render() {
@@ -21,4 +22,14 @@ test("сервер отдаёт приложение калькулятора", 
   assert.match(html, /калькулятор раскроя/i);
   assert.doesNotMatch(html, /Фактическая длина бревна|Готовая длина|Припуск по длине|Припуск к толщине|Припуск к ширине|Обязательный запас от коры/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/);
+});
+
+test("итоговый постав содержит только рабочее резюме без служебного аудита", async () => {
+  const assets = new URL("../dist-static/assets/", import.meta.url);
+  const files = await readdir(assets);
+  const scripts = files.filter((file) => file.endsWith(".js"));
+  const bundle = (await Promise.all(scripts.map((file) => readFile(new URL(file, assets), "utf8")))).join("\n");
+  assert.match(bundle, /ПОЛЕЗНЫЙ ВЫХОД/);
+  assert.match(bundle, /ЗАПОЛНЕНИЕ ТОРЦА/);
+  assert.doesNotMatch(bundle, /РАЗМЕРОВ ПРОВЕРЕНО|СВОБОДНО ПО ПЛОЩАДИ|СПРАВОЧНЫЙ УЧЁТ СЫРЬЯ/);
 });

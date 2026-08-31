@@ -23,7 +23,7 @@ const format = (value: number, digits = 1) =>
     maximumFractionDigits: digits,
   });
 const EXPORT_SVG_STYLES = `.sheet{fill:#fdfdfc;stroke:#1d1f20;stroke-width:1}.log-circle{fill:#fafaf8;stroke:#17191a;stroke-width:2.5}.working-circle{fill:none;stroke:#777b7c;stroke-width:1;stroke-dasharray:5 4}.axis{stroke:#737677;stroke-width:.8;stroke-dasharray:13 5 2 5}.cant-guide{fill:#efefed;stroke:#5f6263;stroke-width:1;stroke-dasharray:6 4}.saw-lines{stroke:#282a2b;stroke-width:1.2;stroke-dasharray:5 2}.board{stroke-width:1.2}.center-board{fill:#eeeeec;stroke:#222526}.side-board{fill:#d9dbda;stroke:#4d5051}.piece-text{fill:#242627;font-size:8px;font-family:Arial,sans-serif;font-weight:700}.defect-zone{fill:#777;opacity:.42}.defect-hatch{fill:none;stroke:#202223;stroke-width:2;stroke-dasharray:3 3}.dimension-line{stroke:#1c1e1f;stroke-width:1}.arrow-fill{fill:#1c1e1f}.dimension-text{fill:#1c1e1f;font-size:14px;font-family:Arial,sans-serif;font-weight:700}.small-dimension{fill:#1c1e1f;font-size:10px;font-family:Arial,sans-serif}.title-box,.production-box{fill:#fff;stroke:#1c1e1f;stroke-width:1}.title-text,.card-title{fill:#1c1e1f;font-family:Arial,sans-serif;font-weight:800}.title-text{font-size:9px}.title-subtext,.card-label,.card-note{fill:#56595a;font-family:Arial,sans-serif}.title-subtext{font-size:7px}.tear-line{stroke:#777;stroke-width:1;stroke-dasharray:7 5}.tear-text{fill:#777;font:700 7px Arial,sans-serif}.card-title{font-size:11px}.card-label{font-size:7px}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-metric{fill:#1c1e1f;font:800 25px Georgia,serif}.card-note{font-size:6.5px}`;
-const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font:800 14px Arial,sans-serif}.card-header-meta{fill:#d8dada;font:700 8px Arial,sans-serif}.result-group{fill:#fff;stroke:#202223;stroke-width:1.2}.recovery-box{fill:#202223}.result-divider{stroke:#202223;stroke-width:1.2}.card-label{fill:#56595a;font:700 8px Arial,sans-serif}.card-value{fill:#1c1e1f;font:800 10px Arial,sans-serif}.card-note{fill:#56595a;font:700 7.5px Arial,sans-serif}.card-metric{fill:#fff;font:800 29px Arial,sans-serif}.recovery-label{fill:#dfe1e1;font:700 8px Arial,sans-serif}.recovery-value{fill:#fff;font:800 9px Arial,sans-serif}.equipment-box{fill:#eff0f0;stroke:#c7c9ca;stroke-width:1.2}.equipment-label{fill:#6c7071;font:700 7.5px Arial,sans-serif}.equipment-name,.equipment-spec{fill:#343738;font:800 9px Arial,sans-serif}.yield-proof-shell{fill:#f3f3f1;stroke:#202223;stroke-width:1.2}.yield-proof-label{fill:#686b6c;font:700 6.5px Arial,sans-serif}.yield-proof-value{fill:#202223;font:800 15px Arial,sans-serif}.yield-proof-note{fill:#202223;font:800 7.5px Arial,sans-serif}`;
+const EXPORT_CARD_STYLES = `.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#8d8b84;stroke-width:1;stroke-dasharray:6 5}.card-shell{fill:#fff;stroke:#20211f;stroke-width:1.4}.card-header{fill:#20211f}.card-header-title{fill:#fff;font:800 13px Arial,sans-serif}.card-header-meta{fill:#d9d7d1;font:700 8px Arial,sans-serif}.summary-box{fill:#f5f2eb;stroke:#d8d4ca;stroke-width:1}.summary-label{fill:#6c6a64;font:700 7.5px Arial,sans-serif}.summary-value{fill:#20211f;font:800 24px Arial,sans-serif}.product-label{fill:#6c6a64;font:700 7.5px Arial,sans-serif}.product-value{fill:#20211f;font:800 10px Arial,sans-serif}`;
 
 function NumberField({
   label,
@@ -120,7 +120,6 @@ function TechnicalDrawing({
   equipment,
   defects,
   edgeAllowance,
-  optimizationMode,
 }: {
   diameter: number;
   variant: Variant;
@@ -131,7 +130,6 @@ function TechnicalDrawing({
   equipment: Equipment;
   defects: Defect[];
   edgeAllowance: number;
-  optimizationMode: "primary" | "auto";
 }) {
   const center = 300;
   const radiusPx = 215;
@@ -225,17 +223,13 @@ function TechnicalDrawing({
       (product) =>
         `${product.nominalThickness}×${product.nominalWidth} мм — ${variant.counts[product.id] || 0} шт.`,
     );
-  const productDisplayRows = productRows.slice(0, 6);
-  const { faceFill, freeArea } = calculateFaceMetrics(diameter, edgeAllowance, products, variant.counts);
-  const consideredSizes = optimizationMode === "auto"
-    ? PRODUCT_CATALOG.length
-    : products.filter((product) => product.enabled).length;
-  const primaryOrderCount = products.filter((product) => product.priority === "primary").length;
+  const productDisplayRows = productRows.slice(0, 5);
+  const { faceFill } = calculateFaceMetrics(diameter, edgeAllowance, products, variant.counts);
 
   return (
     <svg
       ref={svgRef}
-      viewBox="0 0 600 900"
+      viewBox="0 0 600 780"
       style={{
         width: `${600 * zoom}px`,
         maxWidth: zoom <= 1 ? "100%" : "none",
@@ -249,7 +243,7 @@ function TechnicalDrawing({
           <circle cx={center} cy={center} r={radiusPx} />
         </clipPath>
       </defs>
-      <rect x="7" y="7" width="586" height="886" className="sheet" />
+      <rect x="7" y="7" width="586" height="766" className="sheet" />
       <circle cx={center} cy={center} r={radiusPx} className="log-circle" />
       {edgeAllowance > 0 && <circle cx={center} cy={center} r={workingRadiusPx} className="working-circle" />}
       {defects.map((defect, index) => {
@@ -385,10 +379,11 @@ function TechnicalDrawing({
         </>
       )}
       <line x1="28" y1="612" x2="580" y2="612" className="cut-line" />
-      <g transform="translate(20 632)">
-        <rect width="560" height="246" rx="2" className="card-shell" />
-        <rect width="560" height="38" className="card-header" />
-        <text x="14" y="24" className="card-header-title">
+      <g transform="translate(20 626)">
+        <rect width="560" height="132" rx="4" className="card-shell" />
+        <rect width="560" height="34" rx="4" className="card-header" />
+        <path d="M0 30 H560 V34 H0 Z" className="card-header" />
+        <text x="14" y="22" className="card-header-title">
           {mode === "final"
             ? "ИТОГОВЫЙ ПОСТАВ"
             : mode === "breakdown"
@@ -397,66 +392,28 @@ function TechnicalDrawing({
                 ? "МНОГОПИЛ"
                 : "КРОМКООБРЕЗНОЙ СТАНОК"}
         </text>
-        <text x="546" y="23" textAnchor="end" className="card-header-meta">
+        <text x="546" y="21" textAnchor="end" className="card-header-meta">
           Ø{format(diameter, 0)} · {variant.pieces.length} ШТ.
         </text>
-        <g transform="translate(14 50)">
-          <rect width="348" height="108" rx="3" className="result-group" />
-          <path d="M3 0 H132 V108 H3 Q0 108 0 105 V3 Q0 0 3 0 Z" className="recovery-box" />
-          <line x1="132" y1="0" x2="132" y2="108" className="result-divider" />
-          <text x="12" y="18" className="recovery-label">
-            ЗАПОЛНЕНИЕ ТОРЦА
-          </text>
-          <text x="12" y="52" className="card-metric">
-            {format(faceFill)}%
-          </text>
-          <text x="12" y="76" className="recovery-label">
-            СВОБОДНО ПО ПЛОЩАДИ
-          </text>
-          <text x="12" y="94" className="recovery-value">
-            {format(freeArea)}%
-          </text>
-          <text x="146" y="18" className="card-label">
-            ПРОДУКЦИЯ
-          </text>
-          <text x="146" y="35" className="card-value">
+        <g transform="translate(14 46)">
+          <rect width="132" height="72" rx="4" className="summary-box" />
+          <text x="12" y="18" className="summary-label">ПОЛЕЗНЫЙ ВЫХОД</text>
+          <text x="12" y="52" className="summary-value">{format(variant.nominalRecovery)}%</text>
+        </g>
+        <g transform="translate(154 46)">
+          <rect width="132" height="72" rx="4" className="summary-box" />
+          <text x="12" y="18" className="summary-label">ЗАПОЛНЕНИЕ ТОРЦА</text>
+          <text x="12" y="52" className="summary-value">{format(faceFill)}%</text>
+        </g>
+        <g transform="translate(304 46)">
+          <text x="0" y="12" className="product-label">ПРОДУКЦИЯ</text>
+          <text x="0" y="29" className="product-value">
             {productDisplayRows.map((row, index) => (
-              <tspan key={row} x="146" dy={index === 0 ? 0 : 14}>
+              <tspan key={row} x="0" dy={index === 0 ? 0 : 13}>
                 {row}
               </tspan>
             ))}
           </text>
-        </g>
-        <g transform="translate(374 50)">
-          <rect width="172" height="180" rx="3" className="equipment-box" />
-          <text x="11" y="19" className="equipment-label">
-            ОБОРУДОВАНИЕ
-          </text>
-          <text x="11" y="36" className="equipment-name">
-            БРУСОВАЛЬНЫЙ · {format(equipment.stages?.breakdownKerf ?? equipment.kerf)} ММ
-          </text>
-          <text x="11" y="55" className="equipment-spec">
-            МНОГОПИЛ · {format(equipment.stages?.multiripKerf ?? equipment.kerf)} ММ
-          </text>
-          <text x="11" y="74" className="equipment-name">
-            КРОМКООБРЕЗНОЙ · {format(equipment.stages?.edgingKerf ?? equipment.kerf)} ММ
-          </text>
-          <text x="11" y="96" className="equipment-label">
-            ЗАПАС ОТ КРАЯ · {format(edgeAllowance)} ММ
-          </text>
-          <line x1="11" y1="112" x2="161" y2="112" className="result-divider" />
-          <text x="11" y="131" className="equipment-label">СПРАВОЧНЫЙ УЧЁТ СЫРЬЯ</text>
-          <text x="11" y="149" className="equipment-spec">ГОСТ 2708-75 · Ø{variant.gostDiameterCm} СМ</text>
-          <text x="11" y="168" className="equipment-label">ПОЛЕЗНЫЙ ВЫХОД · {format(variant.nominalRecovery)}%</text>
-        </g>
-        <g transform="translate(14 158)">
-          <rect width="348" height="72" className="yield-proof-shell" />
-          <text x="12" y="18" className="yield-proof-label">ПОДБОР ПРОДУКЦИИ</text>
-          <text x="12" y="43" className="yield-proof-value">{consideredSizes}</text>
-          <text x="12" y="59" className="yield-proof-label">РАЗМЕРОВ ПРОВЕРЕНО</text>
-          <text x="116" y="18" className="yield-proof-label">{optimizationMode === "auto" ? "МАКСИМАЛЬНЫЙ НОМИНАЛЬНЫЙ ОБЪЁМ" : "ОСНОВНОЙ ЗАКАЗ + ДОБОР"}</text>
-          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "СРАВНЁН ВЕСЬ ЗАДАННЫЙ АССОРТИМЕНТ" : `ОСНОВНЫХ ЗАКАЗОВ В ПОСТАВЕ · ${primaryOrderCount}`}</text>
-          <text x="116" y="54" className="yield-proof-label">СВОБОДНЫЕ ЗОНЫ ПРОВЕРЕНЫ ДЛЯ ДОБОРА</text>
         </g>
       </g>
     </svg>
@@ -763,6 +720,16 @@ export function CalculatorApp() {
 
   return (
     <main className="app-shell">
+      <header className="app-header">
+        <div className="app-brand">
+          <span className="brand-mark">П</span>
+          <div>
+            <small>Производственный расчёт</small>
+            <h1>Постав</h1>
+          </div>
+        </div>
+        <p>Калькулятор раскроя круглого леса</p>
+      </header>
       <section className="workspace">
         <aside className={`control-panel ${inputsOpen ? "open" : "collapsed"}`}>
           <div className="panel-heading">
@@ -1007,7 +974,6 @@ export function CalculatorApp() {
                 equipment={equipment}
                 defects={defects}
                 edgeAllowance={effectiveEdgeAllowance}
-                optimizationMode={orderMode!}
               />
             ) : (
               <div className={`drawing-empty ${result.status === "no-solution" ? "error" : ""}`}>
