@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculate,
   calculateMaxRecovery,
-  GOST_LENGTHS_M,
   LOG_DIAMETERS,
   MILL_LINE,
   PRODUCT_CATALOG,
@@ -440,7 +439,7 @@ function TechnicalDrawing({
 
 export function CalculatorApp() {
   const [diameter, setDiameter] = useState<number | null>(null);
-  const [logLength, setLogLength] = useState<number | null>(4000);
+  const logLength = 4000;
   const [logAdded, setLogAdded] = useState(true);
   const [finishedLength, setFinishedLength] = useState<number | null>(null);
   const [lengthAllowance, setLengthAllowance] = useState<number | null>(null);
@@ -603,7 +602,6 @@ export function CalculatorApp() {
   const addLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setLogLength(4000);
     setEdgeAllowance(3);
     setEdgeAllowanceEnabled(true);
     setDefects([]);
@@ -611,7 +609,6 @@ export function CalculatorApp() {
   const removeLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setLogLength(4000);
     setEdgeAllowance(3);
     setEdgeAllowanceEnabled(true);
     setDefects([]);
@@ -893,21 +890,6 @@ export function CalculatorApp() {
                       </div>
                     )}
                   </div>
-                  <details className="log-extra-details">
-                    <summary>Дополнительно · расчёт по длине {format((logLength ?? 4000) / 1000)} м</summary>
-                    <label>
-                      <span>Длина нужна только для процента выхода по ГОСТ. Обычно оставляйте 4 м.</span>
-                      <select
-                        value={logLength ?? ""}
-                        aria-label="Длина бревна"
-                        onChange={(event) => setLogLength(Number(event.target.value))}
-                      >
-                        {GOST_LENGTHS_M.map((value) => (
-                          <option key={value} value={value * 1000}>{format(value)} м</option>
-                        ))}
-                      </select>
-                    </label>
-                  </details>
                 </div>
               )}
             </section>
