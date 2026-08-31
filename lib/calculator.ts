@@ -443,6 +443,10 @@ export function calculate(input: { diameter: number; length: number; logLength?:
           const pieces = shiftedPieces(basePieces, offset.x, offset.y);
           if (!pieces.every((piece) => rectFits(piece.x, piece.y, piece.width, piece.height, fitRadius) && defects.every((defect) => avoidsDefect(piece, defect, radius)))) continue;
           const counts = countProducts(pieces);
+          // Каждый выбранный основной заказ обязан реально присутствовать в
+          // поставе. Иначе при нескольких заказах оптимизатор мог набрать
+          // большой объём только одним размером и формально забыть остальные.
+          if (primaryProducts.some((product) => (counts[product.id] || 0) === 0)) continue;
           const nominalVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.nominalThickness * product.nominalWidth * length / 1e9, 0);
           const cuttingVolume = products.reduce((sum, product) => sum + (counts[product.id] || 0) * product.cuttingThickness * product.cuttingWidth * cuttingLength / 1e9, 0);
           const signature = `${cantHeight}|${row.ids.join(",")}|${cap.layers.map((layer) => layer.join(",")).join(";")}|${offset.x},${offset.y}`;

@@ -55,18 +55,21 @@ function NumberField({
   );
 }
 
-function productsForOrder(primaryId: string, includeByproducts: boolean) {
-  const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId);
-  if (!primary) return [];
+function productsForOrders(primaryIds: string[], includeByproducts: boolean) {
+  const selectedIds = new Set(primaryIds);
+  const primaryProducts = PRODUCT_CATALOG.filter((product) => selectedIds.has(product.id));
+  if (!primaryProducts.length) return [];
   return PRODUCT_CATALOG.filter((product) =>
-    product.id === primaryId ||
+    selectedIds.has(product.id) ||
     (includeByproducts &&
-      product.nominalThickness <= primary.nominalThickness &&
-      product.nominalWidth <= primary.nominalWidth),
+      primaryProducts.some((primary) =>
+        product.nominalThickness <= primary.nominalThickness &&
+        product.nominalWidth <= primary.nominalWidth,
+      )),
   ).map((product) => ({
     ...product,
     enabled: true,
-    priority: product.id === primaryId ? "primary" as const : "byproduct" as const,
+    priority: selectedIds.has(product.id) ? "primary" as const : "byproduct" as const,
   }));
 }
 
@@ -187,6 +190,7 @@ function TechnicalDrawing({
   const consideredSizes = optimizationMode === "auto"
     ? PRODUCT_CATALOG.length
     : products.filter((product) => product.enabled).length;
+  const primaryOrderCount = products.filter((product) => product.priority === "primary").length;
 
   return (
     <svg
@@ -379,16 +383,16 @@ function TechnicalDrawing({
           <path d="M3 0 H132 V108 H3 Q0 108 0 105 V3 Q0 0 3 0 Z" className="recovery-box" />
           <line x1="132" y1="0" x2="132" y2="108" className="result-divider" />
           <text x="12" y="18" className="recovery-label">
-            ВЫХОД ПО ГОСТ 2708-75
+            ЗАПОЛНЕНИЕ ТОРЦА
           </text>
           <text x="12" y="52" className="card-metric">
-            {format(variant.nominalRecovery)}%
+            {format(faceFill)}%
           </text>
           <text x="12" y="76" className="recovery-label">
-            ПРОДУКЦИЯ / СЫРЬЁ
+            СВОБОДНО ПО ПЛОЩАДИ
           </text>
           <text x="12" y="94" className="recovery-value">
-            {format(variant.nominalVolume, 4)} / {format(variant.logVolume, 3)} М³
+            {format(Math.max(0, 100 - faceFill))}%
           </text>
           <text x="146" y="18" className="card-label">
             ПРОДУКЦИЯ
@@ -419,18 +423,18 @@ function TechnicalDrawing({
             {edgeAllowance > 0 ? `ЗАПАС ОТ КРАЯ · ${format(edgeAllowance)} ММ` : "ЗАПАС ОТ КРАЯ · НЕ ЗАДАН"}
           </text>
           <line x1="11" y1="112" x2="161" y2="112" className="result-divider" />
-          <text x="11" y="131" className="equipment-label">СЫРЬЁ ПО ГОСТ 2708-75</text>
-          <text x="11" y="149" className="equipment-spec">КЛАСС · Ø{variant.gostDiameterCm} СМ</text>
-          <text x="11" y="168" className="equipment-name">ОБЪЁМ · {format(variant.logVolume, 3)} М³</text>
+          <text x="11" y="131" className="equipment-label">СПРАВОЧНЫЙ УЧЁТ СЫРЬЯ</text>
+          <text x="11" y="149" className="equipment-spec">ГОСТ 2708-75 · Ø{variant.gostDiameterCm} СМ</text>
+          <text x="11" y="168" className="equipment-label">ПОЛЕЗНЫЙ ВЫХОД · {format(variant.nominalRecovery)}%</text>
         </g>
         <g transform="translate(14 158)">
           <rect width="348" height="72" className="yield-proof-shell" />
-          <text x="12" y="18" className="yield-proof-label">ЗАПОЛНЕНИЕ РАБОЧЕГО ТОРЦА</text>
-          <text x="12" y="43" className="yield-proof-value">{format(faceFill)}%</text>
-          <text x="12" y="59" className="yield-proof-label">ЗАНЯТО ЗАГОТОВКАМИ</text>
+          <text x="12" y="18" className="yield-proof-label">ПОДБОР ПРОДУКЦИИ</text>
+          <text x="12" y="43" className="yield-proof-value">{consideredSizes}</text>
+          <text x="12" y="59" className="yield-proof-label">РАЗМЕРОВ ПРОВЕРЕНО</text>
           <text x="116" y="18" className="yield-proof-label">{optimizationMode === "auto" ? "МАКСИМАЛЬНАЯ ВЫГОДА" : "ОСНОВНОЙ ЗАКАЗ + ДОБОР"}</text>
-          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "ВЫБРАН ЛУЧШИЙ НАЙДЕННЫЙ ПОСТАВ" : "ОСНОВНОЙ РАЗМЕР СОХРАНЁН"}</text>
-          <text x="116" y="54" className="yield-proof-label">ПРОВЕРЕНО РАЗМЕРОВ · {consideredSizes}</text>
+          <text x="116" y="37" className="yield-proof-note">{optimizationMode === "auto" ? "ВЫБРАН ЛУЧШИЙ НАЙДЕННЫЙ ПОСТАВ" : `ОСНОВНЫХ ЗАКАЗОВ В ПОСТАВЕ · ${primaryOrderCount}`}</text>
+          <text x="116" y="54" className="yield-proof-label">СВОБОДНЫЕ ЗОНЫ ПРОВЕРЕНЫ ДЛЯ ДОБОРА</text>
         </g>
       </g>
     </svg>
@@ -446,6 +450,7 @@ export function CalculatorApp() {
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
   const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
+  const [additionalOrderOpen, setAdditionalOrderOpen] = useState(false);
   const [edgeAllowance, setEdgeAllowance] = useState(3);
   const [edgeAllowanceEnabled, setEdgeAllowanceEnabled] = useState(true);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
@@ -620,6 +625,7 @@ export function CalculatorApp() {
     setLengthAllowance(null);
     setIncludeByproducts(true);
     setOrderMode(null);
+    setAdditionalOrderOpen(false);
     setEdgeAllowance(3);
     setEdgeAllowanceEnabled(true);
     setCustomDiameterOpen(false);
@@ -629,21 +635,26 @@ export function CalculatorApp() {
 
   const selectPrimaryProduct = (id: string) => {
     setOrderMode("primary");
-    setProducts(productsForOrder(id, includeByproducts));
+    const currentIds = products.filter((product) => product.priority === "primary").map((product) => product.id);
+    const nextIds = [...new Set([...currentIds, id])];
+    setProducts(productsForOrders(nextIds, includeByproducts));
+    setAdditionalOrderOpen(false);
   };
   const selectAutomaticYield = () => {
     setOrderMode("auto");
     setProducts(PRODUCT_CATALOG.map((product) => ({ ...product, enabled: true, priority: "byproduct" })));
+    setAdditionalOrderOpen(false);
   };
   const selectPrimaryMode = () => {
     if (orderMode === "primary") return;
     setOrderMode("primary");
     setProducts([]);
+    setAdditionalOrderOpen(false);
   };
   const changeByproducts = (enabled: boolean) => {
     setIncludeByproducts(enabled);
-    const primary = products.find((product) => product.priority === "primary");
-    if (primary) setProducts(productsForOrder(primary.id, enabled));
+    const primaryIds = products.filter((product) => product.priority === "primary").map((product) => product.id);
+    if (primaryIds.length) setProducts(productsForOrders(primaryIds, enabled));
   };
   const updateProduct = (id: string, patch: Partial<Product>) =>
     setProducts((items) =>
@@ -661,6 +672,7 @@ export function CalculatorApp() {
     );
   const chooseAnotherPrimaryProduct = () => {
     setProducts([]);
+    setAdditionalOrderOpen(false);
   };
 
   const toggleDefects = (enabled: boolean) =>
@@ -926,22 +938,28 @@ export function CalculatorApp() {
                   {orderMode === null && (
                     <p className="mode-hint">Выберите, что сейчас важнее: максимальная выгода со всего бревна или конкретный заказ.</p>
                   )}
-                  {orderMode === "primary" && products.length === 0 && (
+                  {orderMode === "primary" && products.length > 0 && (
+                    <div className="selected-primary-order">
+                      <span>
+                        <small>Основной заказ</small>
+                        <strong>{products.filter((product) => product.priority === "primary").map((product) => product.name).join(" + ")}</strong>
+                      </span>
+                      <div className="selected-order-actions">
+                        <button onClick={chooseAnotherPrimaryProduct}>Выбрать другой</button>
+                        <button className="add-order-button" aria-label="Добавить ещё один заказ" title="Добавить ещё один заказ" onClick={() => setAdditionalOrderOpen((value) => !value)}>＋</button>
+                      </div>
+                    </div>
+                  )}
+                  {orderMode === "primary" && (products.length === 0 || additionalOrderOpen) && (
                     <div className="catalog-picker primary-catalog">
-                      <strong>Какой размер нужен в первую очередь?</strong>
+                      <strong>{products.length === 0 ? "Какой размер нужен в первую очередь?" : "Добавить ещё один основной заказ"}</strong>
                       <div className="catalog-grid">
-                        {PRODUCT_CATALOG.map((product) => (
+                        {PRODUCT_CATALOG.filter((product) => !products.some((item) => item.id === product.id && item.priority === "primary")).map((product) => (
                           <button key={product.id} onClick={() => selectPrimaryProduct(product.id)}>
                             {product.nominalThickness} × {product.nominalWidth}
                           </button>
                         ))}
                       </div>
-                    </div>
-                  )}
-                  {orderMode === "primary" && products.length > 0 && (
-                    <div className="selected-primary-order">
-                      <span><small>Основной заказ</small><strong>{products.find((product) => product.priority === "primary")?.name}</strong></span>
-                      <button onClick={chooseAnotherPrimaryProduct}>Выбрать другой</button>
                     </div>
                   )}
                   {orderMode === "primary" && products.length > 0 && (

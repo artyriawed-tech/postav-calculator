@@ -178,6 +178,22 @@ test("основной заказ 50×150 сохраняет максимум, �
   assert.ok(filled.variants[0].nominalRecovery > plain.variants[0].nominalRecovery);
 });
 
+test("несколько основных заказов обязательны, а свободное место заполняется третьим размером", () => {
+  const primaryIds = new Set(["catalog-25x100", "catalog-25x150"]);
+  const primaryProducts = PRODUCT_CATALOG.filter((product) => primaryIds.has(product.id));
+  const products = PRODUCT_CATALOG
+    .filter((product) => primaryIds.has(product.id) || primaryProducts.some((primary) =>
+      product.nominalThickness <= primary.nominalThickness && product.nominalWidth <= primary.nominalWidth))
+    .map((product) => ({ ...product, enabled: true, priority: primaryIds.has(product.id) ? "primary" as const : "byproduct" as const }));
+  const result = calculate({ diameter: 360, length: 1000, edgeAllowance: 3, products, equipment: MILL_LINE, topN: 1 });
+  assert.equal(result.status, "ok");
+  const variant = result.variants[0];
+  assert.ok((variant.counts["catalog-25x100"] || 0) > 0);
+  assert.ok((variant.counts["catalog-25x150"] || 0) > 0);
+  assert.ok((variant.counts["catalog-25x50"] || 0) > 0, "свободная зона не заполнена побочным размером");
+  assert.equal(auditVariantGeometry(360, variant, [], 3).passed, true);
+});
+
 test("полезный добор не уменьшает основной заказ на всём каталоге диаметров", () => {
   for (const diameter of LOG_DIAMETERS) {
     for (const primary of PRODUCT_CATALOG) {

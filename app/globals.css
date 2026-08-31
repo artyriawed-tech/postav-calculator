@@ -266,6 +266,8 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .selected-primary-order span small{color:#66696a;font-size:8px;font-weight:800;text-transform:uppercase}
 .selected-primary-order span strong{margin-top:4px;font-size:15px}
 .selected-primary-order button{padding:8px 9px;border:1px solid #aeb1b2;border-radius:6px;background:#ececea;color:#202223;font-size:9px;font-weight:800}
+.selected-order-actions{display:flex;flex:0 0 auto;gap:6px;align-items:center}
+.selected-primary-order .add-order-button{width:34px;height:34px;padding:0;border-color:#202223;background:#202223;color:#fff;font-size:18px;line-height:1}
 .yield-proof-shell{fill:#f3f3f1;stroke:#202223;stroke-width:1.2}
 .yield-proof-label{fill:#686b6c;font-size:6.5px;font-weight:700}
 .yield-proof-value{fill:#202223;font-size:15px;font-weight:800}
@@ -284,4 +286,7 @@ input::placeholder{color:#a0a3a4;font-weight:500}
   .damage-choice{grid-template-columns:1fr}
   .binary-choice{width:100%}
   .binary-choice button{flex:1;min-height:40px}
+  .selected-primary-order{align-items:flex-start;flex-direction:column}
+  .selected-order-actions{width:100%}
+  .selected-order-actions>button:first-child{flex:1}
 }
