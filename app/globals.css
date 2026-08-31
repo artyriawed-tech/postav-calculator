@@ -44,13 +44,6 @@
 .panel-heading{font-size:16px}.section-title h3{font-size:15px;letter-spacing:0}.section-title p{font-size:11px;line-height:1.45}.active-equipment label>span{font-size:10px}.active-equipment select{height:42px;font-size:13px}.active-equipment-summary{margin:10px 0 0;color:#4f5253;font-size:11px;font-weight:700;line-height:1.45}.field-grid label span,.mini-fields label span,.modal-grid label span,.wide-field span{font-size:10px}.field-grid input,.mini-fields input,.modal-grid input,.wide-field input{min-height:42px;font-size:14px}.product-card-heading label{font-size:12px}.product-card-heading>span{font-size:11px}.field-pair-title{font-size:10px}.result-count{font-size:10px;line-height:1.4}.defect-toggle strong{font-size:12px}.defect-toggle span,.defect-warning{font-size:10px}.active-equipment-actions button{height:38px;font-size:11px}.drawing-toolbar h2{font-size:21px}.drawing-context{font-size:11px}.piece-text{font-size:10px}.dimension-text{font-size:16px}.small-dimension{font-size:12px;font-weight:700}.cut-line{stroke:#6d7071;stroke-width:1;stroke-dasharray:6 5}.scissors{fill:#343637;font-size:16px}.card-shell{fill:#fff;stroke:#17191a;stroke-width:1.5}.card-header{fill:#202223}.card-header-title{fill:#fff;font-size:14px;font-weight:800}.card-header-meta{fill:#d8dada;font-size:8px;font-weight:700}.result-group{fill:#fff;stroke:#c7c9ca;stroke-width:1}.recovery-box{fill:#ececeb;stroke:none}.result-divider{stroke:#c7c9ca;stroke-width:1}.card-rule{stroke:#c7c9ca;stroke-width:1}.card-label{fill:#56595a;font-size:9px;font-weight:700}.card-value{fill:#1c1e1f;font-size:11px;font-weight:800}.card-note{fill:#56595a;font-size:8px;font-weight:700}.card-metric{fill:#1c1e1f;font-size:29px;font-weight:800}.equipment-label{fill:#d2d4d4;font-size:8px;font-weight:700}.equipment-name{fill:#fff;font-size:12px;font-weight:800}.equipment-spec{fill:#fff;font-size:13px;font-weight:800}
 .length-requirement{margin:10px 0 0;color:#4f5253;font-size:11px;line-height:1.45}.length-requirement strong{color:#1f2122;font-size:12px}
 .saw-kerf{fill:#202223;opacity:.72}
-.production-allowances{margin:14px 0;padding:14px;border:1px solid #aeb1b2;border-radius:9px;background:#f2f2f0}
-.production-allowances>strong{display:block;margin-bottom:11px;font-size:12px}
-.allowance-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
-.allowance-grid label span{display:block;margin-bottom:5px;color:#555859;font-size:9px;font-weight:700}
-.allowance-grid input{width:100%;min-height:42px;padding:8px 9px;border:1px solid #b8bbbc;border-radius:6px;background:#fff;font-size:13px;font-weight:800}
-.production-allowances>p{margin:10px 0 0;color:#595c5d;font-size:9px;line-height:1.45}
-.production-allowances>.input-error{color:#8d271f;font-weight:800}
 .metric-help{margin-top:12px;padding:12px;border:1px solid #bfc2c3;border-radius:8px;background:#fff}
 .metric-help summary{cursor:pointer;font-size:10px;font-weight:800}
 .metric-help p{margin:9px 0 0;color:#555859;font-size:9px;line-height:1.5}
@@ -58,7 +51,7 @@
 .drawing-tabs{flex-wrap:wrap}
 
 @media(max-width:900px){.panel-heading{font-size:15px}.section-title h3{font-size:14px}.section-title p{font-size:11px}.drawing-toolbar h2{font-size:18px}.drawing-context{font-size:10px}.drawing-caption{font-size:10px}}
-@media(max-width:900px){.allowance-grid{grid-template-columns:1fr}.drawing-tabs{width:100%}}
+@media(max-width:900px){.drawing-tabs{width:100%}}
 
 /* Blank-first workflow: equipment → measured log → real product sizes. */
 .section-title.with-state{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -118,18 +111,6 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 .manual-diameter{margin-top:12px;padding-top:11px;border-top:1px solid #d5d7d8}
 .manual-diameter label span,.log-extra-details label span{display:block;margin-bottom:6px;color:#56595a;font-size:10px;font-weight:700}
 .manual-diameter input,.log-extra-details input{width:100%;min-height:43px;padding:9px 10px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;font-size:15px;font-weight:800}
-.edge-allowance-panel{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:12px;align-items:center;margin-top:12px;padding:13px;border:1px solid #bfc2c3;border-radius:8px;background:#ececea}
-.log-length-panel{display:grid;grid-template-columns:minmax(0,1fr) 104px;gap:12px;align-items:center;margin-top:12px;padding:13px;border:1px solid #202223;border-radius:8px;background:#fff}
-.log-length-panel strong,.log-length-panel span{display:block}
-.log-length-panel strong{font-size:12px}
-.log-length-panel span{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}
-.log-length-panel select{width:100%;height:43px;padding:0 9px;border:1px solid #aeb1b2;border-radius:7px;background:#f7f7f5;color:#202223;font-size:14px;font-weight:800}
-.edge-allowance-panel strong,.edge-allowance-panel span{display:block}
-.edge-allowance-panel strong{font-size:11px}
-.edge-allowance-panel span{margin-top:4px;color:#5f6263;font-size:9px;line-height:1.4}
-.edge-allowance-panel label{display:grid;grid-template-columns:1fr 22px;align-items:center;border:1px solid #aeb1b2;border-radius:7px;background:#fff;overflow:hidden}
-.edge-allowance-panel input{width:100%;min-width:0;height:42px;padding:8px;border:0;background:#fff;font-size:15px;font-weight:800;text-align:right;outline:none}
-.edge-allowance-panel b{color:#66696a;font-size:9px}
 .log-extra-details{margin-top:11px;padding-top:10px;border-top:1px solid #d5d7d8}
 .log-extra-details summary{cursor:pointer;color:#4f5253;font-size:10px;font-weight:800}
 .log-extra-details label{display:block;margin-top:10px}
@@ -249,11 +230,8 @@ input::placeholder{color:#a0a3a4;font-weight:500}
 
 /* One log block: optional bark clearance and damaged wood. */
 .log-safety-panel{margin-top:12px;padding:14px;border:1px solid #bfc2c3;border-radius:9px;background:#ececea}
-.edge-allowance-input{display:grid;grid-template-columns:1fr 70px 22px;align-items:center;gap:0;margin:11px 0 0 26px;border:1px solid #aeb1b2;border-radius:7px;background:#fff;overflow:hidden}
-.edge-allowance-input>span{padding-left:10px;color:#5f6263;font-size:10px;font-weight:800}
-.edge-allowance-input input{width:100%;min-width:0;height:40px;padding:7px;border:0;background:#fff;font-size:15px;font-weight:800;text-align:right;outline:none}
-.edge-allowance-input b{color:#66696a;font-size:9px}
 .damage-choice{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;margin-top:13px;padding-top:13px;border-top:1px solid #c7c9ca}
+.log-safety-panel>.damage-choice{margin-top:0;padding-top:0;border-top:0}
 .damage-choice strong,.damage-choice span{display:block}
 .damage-choice strong{font-size:12px}
 .damage-choice span{margin-top:4px;color:#5f6263;font-size:10px;line-height:1.4}

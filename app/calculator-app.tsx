@@ -5,7 +5,6 @@ import {
   calculate,
   calculateFaceMetrics,
   calculateMaxRecovery,
-  GOST_LENGTHS_M,
   LOG_DIAMETERS,
   MILL_LINE,
   PRODUCT_CATALOG,
@@ -466,17 +465,15 @@ function TechnicalDrawing({
 
 export function CalculatorApp() {
   const [diameter, setDiameter] = useState<number | null>(null);
-  const [logLength, setLogLength] = useState(4000);
+  const logLength = 4000;
+  const finishedLength = 4000;
+  const lengthAllowance = 0;
+  const edgeAllowance = 3;
   const [logAdded, setLogAdded] = useState(true);
-  const [finishedLength, setFinishedLength] = useState<number | null>(4000);
-  const [lengthAllowance, setLengthAllowance] = useState<number | null>(0);
-  const [thicknessAllowance, setThicknessAllowance] = useState(0);
-  const [widthAllowance, setWidthAllowance] = useState(0);
   const [products, setProducts] = useState<Product[]>([]);
   const [includeByproducts, setIncludeByproducts] = useState(true);
   const [orderMode, setOrderMode] = useState<"primary" | "auto" | null>(null);
   const [additionalOrderOpen, setAdditionalOrderOpen] = useState(false);
-  const [edgeAllowance, setEdgeAllowance] = useState(3);
   const [customDiameterOpen, setCustomDiameterOpen] = useState(false);
   const [equipmentList, setEquipmentList] = useState<Equipment[]>([MILL_LINE]);
   const [equipmentId, setEquipmentId] = useState(MILL_LINE.id);
@@ -520,14 +517,9 @@ export function CalculatorApp() {
     typeof value === "number" && Number.isFinite(value) && value > 0;
   const equipmentReady =
     !!equipment && positive(equipment.kerf) && !!equipment.stages;
-  const logReady = logAdded && positive(diameter) && positive(logLength);
+  const logReady = logAdded && positive(diameter);
   const effectiveEdgeAllowance = edgeAllowance;
-  const edgeAllowanceReady = Number.isFinite(edgeAllowance) && edgeAllowance >= 3 && !!diameter && edgeAllowance < diameter / 2;
-  const calculationProducts = useMemo(() => products.map((product) => ({
-    ...product,
-    cuttingThickness: product.nominalThickness + thicknessAllowance,
-    cuttingWidth: product.nominalWidth + widthAllowance,
-  })), [products, thicknessAllowance, widthAllowance]);
+  const calculationProducts = products;
   const productsReady =
     calculationProducts.some((product) => product.enabled) &&
     (orderMode === "auto" || calculationProducts.some((product) => product.enabled && product.priority === "primary")) &&
@@ -538,8 +530,7 @@ export function CalculatorApp() {
         product.cuttingThickness >= product.nominalThickness &&
         product.cuttingWidth >= product.nominalWidth,
     );
-  const orderReady = productsReady && positive(finishedLength) && lengthAllowance !== null && lengthAllowance >= 0 && finishedLength! + lengthAllowance <= logLength;
-  const readyToCalculate = equipmentReady && logReady && edgeAllowanceReady && productsReady && orderReady;
+  const readyToCalculate = equipmentReady && logReady && productsReady;
 
   const missingMessage = !equipment
     ? "Добавьте оборудование, на котором будет выполняться распил."
@@ -547,15 +538,13 @@ export function CalculatorApp() {
       ? "Выберите диаметр бревна."
       : !logReady
         ? "Выберите диаметр тонкого торца."
-        : !edgeAllowanceReady
-          ? "Проверьте запас от края бревна."
         : products.length === 0
           ? "Добавьте размеры продукции, которую нужно получить."
           : !productsReady
             ? "Заполните толщину и ширину каждого размера продукции."
             : "";
 
-  const calculationLength = finishedLength ?? 0;
+  const calculationLength = finishedLength;
   const calculationLogLength = logLength;
 
   const result: Calculation = useMemo(() => {
@@ -564,7 +553,7 @@ export function CalculatorApp() {
       diameter: diameter!,
       length: calculationLength,
       logLength: calculationLogLength,
-      lengthAllowance: lengthAllowance ?? 0,
+      lengthAllowance,
       edgeAllowance: effectiveEdgeAllowance,
       equipment,
       defects,
@@ -630,27 +619,19 @@ export function CalculatorApp() {
   const addLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setEdgeAllowance(3);
     setDefects([]);
   };
   const removeLog = () => {
     setLogAdded(true);
     setDiameter(null);
-    setEdgeAllowance(3);
     setDefects([]);
   };
   const resetCalculation = () => {
     removeLog();
     setProducts([]);
-    setLogLength(4000);
-    setFinishedLength(4000);
-    setLengthAllowance(0);
-    setThicknessAllowance(0);
-    setWidthAllowance(0);
     setIncludeByproducts(true);
     setOrderMode(null);
     setAdditionalOrderOpen(false);
-    setEdgeAllowance(3);
     setCustomDiameterOpen(false);
     setDrawingMode("final");
     setZoom(1);
@@ -776,7 +757,7 @@ export function CalculatorApp() {
         ? { title: "Выберите цель расчёта", button: "", action: undefined }
       : products.length === 0
         ? { title: "Выберите размер заказа", button: "", action: undefined }
-        : !productsReady || !orderReady
+        : !productsReady
           ? { title: "Заполните данные продукции", button: "", action: undefined }
           : { title: "Проверьте исходные данные", button: "", action: undefined };
 
@@ -860,34 +841,7 @@ export function CalculatorApp() {
                     </div>
                   )}
                   <p className="field-help">Измеряйте тонкий торец без коры. До Ø20 см достаточно одного диаметра; крупнее — измерьте в двух направлениях и возьмите среднее.</p>
-                  <div className="log-length-panel">
-                    <div>
-                      <strong>Фактическая длина бревна</strong>
-                      <span>Она определяет табличный объём сырья по ГОСТ 2708-75 и поэтому влияет на процент выхода.</span>
-                    </div>
-                    <select value={logLength} onChange={(event) => setLogLength(Number(event.target.value))} aria-label="Фактическая длина бревна">
-                      {GOST_LENGTHS_M.map((length) => <option key={length} value={length * 1000}>{format(length, 2)} м</option>)}
-                    </select>
-                  </div>
                   <div className="log-safety-panel">
-                    <div className="edge-allowance-panel">
-                      <div>
-                        <strong>Обязательный запас от коры</strong>
-                        <span>Каждый угол доски должен быть не ближе 3 мм к окружности тонкого торца.</span>
-                      </div>
-                      <label className="edge-allowance-input">
-                        <span>Запас</span>
-                        <input
-                          type="number"
-                          min="3"
-                          step="0.5"
-                          value={edgeAllowance}
-                          aria-label="Запас от края бревна в миллиметрах"
-                          onChange={(event) => setEdgeAllowance(Number(event.target.value))}
-                        />
-                        <b>мм</b>
-                      </label>
-                    </div>
                     <div className="damage-choice">
                       <div>
                         <strong>Гниль или повреждение</strong>
@@ -953,19 +907,6 @@ export function CalculatorApp() {
                   {orderMode === null && (
                     <p className="mode-hint">Выберите, что сейчас важнее: наибольший номинальный объём со всего бревна или конкретный заказ.</p>
                   )}
-                  {orderMode !== null && (
-                    <div className="production-allowances">
-                      <strong>Длина и размеры распила</strong>
-                      <div className="allowance-grid">
-                        <NumberField label="Готовая длина, мм" value={finishedLength} onChange={setFinishedLength} required />
-                        <NumberField label="Припуск по длине, мм" value={lengthAllowance} onChange={setLengthAllowance} />
-                        <NumberField label="Припуск к толщине, мм" value={thicknessAllowance} onChange={(value) => setThicknessAllowance(value ?? 0)} step={0.1} />
-                        <NumberField label="Припуск к ширине, мм" value={widthAllowance} onChange={(value) => setWidthAllowance(value ?? 0)} step={0.1} />
-                      </div>
-                      <p>Размер распила = номинальный размер + указанный припуск. Сейчас: +{format(thicknessAllowance)} мм к толщине и +{format(widthAllowance)} мм к ширине.</p>
-                      {finishedLength !== null && lengthAllowance !== null && finishedLength + lengthAllowance > logLength && <p className="input-error">Готовая длина с припуском больше длины бревна.</p>}
-                    </div>
-                  )}
                   {orderMode === "primary" && products.length > 0 && (
                     <div className="selected-primary-order">
                       <span>
@@ -1016,7 +957,7 @@ export function CalculatorApp() {
                       <p><b>Заполнение торца</b> = площадь размеров распила ÷ площадь рабочей окружности после запаса.</p>
                       <p><b>Полезный выход продукции</b> = номинальный объём готовых досок ÷ табличный объём бревна по ГОСТ 2708-75.</p>
                       <p><b>Свободная площадь</b> = 100% − заполнение торца. Это не объём отходов.</p>
-                      <p>Объём сырья: {format(variant.logVolume, 3)} м³; класс кубатурника Ø{variant.gostDiameterCm} см × {format(variant.gostLengthM, 2)} м.</p>
+                      <p>Объём сырья по ГОСТ 2708-75: {format(variant.logVolume, 3)} м³.</p>
                     </details>
                   )}
                 </>

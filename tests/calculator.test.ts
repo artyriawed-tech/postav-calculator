@@ -18,6 +18,10 @@ test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а н�
   assert.ok(Math.abs(variant.nominalVolume - 0.0344) < 1e-12);
   assert.equal(variant.logVolume, 0.073);
   assert.ok(Math.abs(variant.nominalRecovery - 47.12328767123288) < 1e-10);
+  const idealCylinderVolume = Math.PI * (0.14 / 2) ** 2 * 4;
+  const rejectedCylinderPercent = variant.nominalVolume / idealCylinderVolume * 100;
+  assert.ok(Math.abs(rejectedCylinderPercent - 55.86663308531836) < 1e-10);
+  assert.ok(Math.abs(variant.nominalRecovery - rejectedCylinderPercent) > 8);
   const audit = auditVariantGeometry(140, variant, [], 3);
   assert.equal(audit.passed, true);
   assert.ok(audit.minEdgeClearance >= 3 - 1e-7);

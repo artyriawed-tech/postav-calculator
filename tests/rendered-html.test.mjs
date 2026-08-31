@@ -19,5 +19,6 @@ test("сервер отдаёт приложение калькулятора", 
   const html = await response.text();
   assert.match(html, /Постав/);
   assert.match(html, /калькулятор раскроя/i);
+  assert.doesNotMatch(html, /Фактическая длина бревна|Готовая длина|Припуск по длине|Припуск к толщине|Припуск к ширине|Обязательный запас от коры/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/);
 });
