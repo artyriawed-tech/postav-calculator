@@ -5,6 +5,11 @@ import { auditVariantGeometry, calculate as rawCalculate, calculateFaceMetrics, 
 const calculate = (input: Parameters<typeof rawCalculate>[0]) => rawCalculate({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
 const calculateMaxRecovery = (input: Parameters<typeof rawCalculateMaxRecovery>[0]) => rawCalculateMaxRecovery({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
 
+test("Ø26 входит в основной рабочий ряд диаметров", () => {
+  assert.ok(LOG_DIAMETERS.includes(260));
+  assert.ok(gost2708Volume(260, 4000));
+});
+
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
   const primaryId = "catalog-30x120";
   const products = PRODUCT_CATALOG

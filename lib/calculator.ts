@@ -642,4 +642,4 @@ export function calculateMaxRecovery(input: {
 }
 
 // Папин список содержал Ø340 дважды. В интерфейсе оставляем уникальные размеры.
-export const LOG_DIAMETERS = [140, 160, 180, 200, 220, 240, 280, 300, 340, 360] as const;
+export const LOG_DIAMETERS = [140, 160, 180, 200, 220, 240, 260, 280, 300, 340, 360] as const;
