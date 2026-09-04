@@ -10,6 +10,14 @@ test("Ø26 входит в основной рабочий ряд диаметр
   assert.ok(gost2708Volume(260, 4000));
 });
 
+test("доска 25×120 входит в рабочий ассортимент", () => {
+  const product = PRODUCT_CATALOG.find((item) => item.id === "catalog-25x120");
+  assert.ok(product);
+  assert.equal(product.name, "25 × 120 мм");
+  assert.equal(product.cuttingThickness, 25);
+  assert.equal(product.cuttingWidth, 120);
+});
+
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
   const primaryId = "catalog-30x120";
   const products = PRODUCT_CATALOG
