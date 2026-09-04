@@ -4,6 +4,17 @@ import { auditVariantGeometry, calculate as rawCalculate, calculateFaceMetrics, 
 
 const calculate = (input: Parameters<typeof rawCalculate>[0]) => rawCalculate({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
 const calculateMaxRecovery = (input: Parameters<typeof rawCalculateMaxRecovery>[0]) => rawCalculateMaxRecovery({ logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, ...input });
+const HISTORICAL_30X120 = {
+  id: "historical-30x120",
+  name: "30 × 120 мм",
+  nominalThickness: 30,
+  nominalWidth: 120,
+  cuttingThickness: 30,
+  cuttingWidth: 120,
+  color: "blue" as const,
+  enabled: true,
+  priority: "primary" as const,
+};
 
 test("Ø26 входит в основной рабочий ряд диаметров", () => {
   assert.ok(LOG_DIAMETERS.includes(260));
@@ -18,11 +29,18 @@ test("доска 25×120 входит в рабочий ассортимент",
   assert.equal(product.cuttingWidth, 120);
 });
 
+test("доска 30×120 исключена из рабочего ассортимента", () => {
+  assert.equal(PRODUCT_CATALOG.some((item) => item.id === "catalog-30x120"), false);
+});
+
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
-  const primaryId = "catalog-30x120";
-  const products = PRODUCT_CATALOG
-    .filter((product) => product.id === primaryId || (product.nominalThickness <= 30 && product.nominalWidth <= 120))
-    .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
+  const primaryId = HISTORICAL_30X120.id;
+  const products = [
+    HISTORICAL_30X120,
+    ...PRODUCT_CATALOG
+      .filter((product) => product.nominalThickness <= 30 && product.nominalWidth <= 120)
+      .map((product) => ({ ...product, enabled: true, priority: "byproduct" as const })),
+  ];
   const result = calculate({ diameter: 140, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, products, equipment: MILL_LINE, topN: 1 });
   assert.equal(result.status, "ok");
   const variant = result.variants[0];
@@ -44,8 +62,8 @@ test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а н�
 });
 
 test("тот же пример отдельно даёт 61,0% заполнения рабочего торца и 39,0% свободной площади", () => {
-  const products = PRODUCT_CATALOG.filter((product) => ["catalog-30x120", "catalog-25x100"].includes(product.id));
-  const metrics = calculateFaceMetrics(140, 3, products, { "catalog-30x120": 1, "catalog-25x100": 2 });
+  const products = [HISTORICAL_30X120, ...PRODUCT_CATALOG.filter((product) => product.id === "catalog-25x100")];
+  const metrics = calculateFaceMetrics(140, 3, products, { [HISTORICAL_30X120.id]: 1, "catalog-25x100": 2 });
   assert.equal(metrics.cuttingArea, 8600);
   assert.ok(Math.abs(metrics.workingArea - Math.PI * 67 ** 2) < 1e-9);
   assert.ok(Math.abs(metrics.faceFill - 60.98162221386946) < 1e-10);
@@ -60,7 +78,7 @@ test("запас от края меньше обязательных 3 мм от
 });
 
 test("припуски меняют геометрию и объём распила, но не номинальный объём готовой продукции", () => {
-  const base = PRODUCT_CATALOG.find((product) => product.id === "catalog-30x120")!;
+  const base = HISTORICAL_30X120;
   const nominal = calculate({ diameter: 180, length: 3900, logLength: 4000, lengthAllowance: 0, products: [{ ...base, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
   const oversized = calculate({ diameter: 180, length: 3900, logLength: 4000, lengthAllowance: 100, products: [{ ...base, cuttingThickness: 32, cuttingWidth: 123, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
   assert.equal(nominal.status, "ok");
@@ -80,7 +98,7 @@ test("контроль расчёта обнаруживает испорчен�
 });
 
 test("контроль расчёта отдельно проверяет заявленный запас от края", () => {
-  const primary = PRODUCT_CATALOG.find((product) => product.id === "catalog-30x120")!;
+  const primary = HISTORICAL_30X120;
   const result = calculate({ diameter: 140, length: 4000, logLength: 4000, lengthAllowance: 0, edgeAllowance: 3, products: [{ ...primary, enabled: true, priority: "primary" }], equipment: MILL_LINE, topN: 1 });
   assert.equal(result.status, "ok");
   assert.equal(auditVariantGeometry(140, result.variants[0], [], 3).passed, true);
@@ -109,12 +127,15 @@ test("четвертные длины пиловочника берутся из
 });
 
 test("Ø140 с запасом 3 мм безопасно добирает 25×100 вокруг заказа 30×120", () => {
-  const primaryId = "catalog-30x120";
-  const primary = PRODUCT_CATALOG.find((product) => product.id === primaryId)!;
+  const primaryId = HISTORICAL_30X120.id;
+  const primary = HISTORICAL_30X120;
   const onlyPrimary = [{ ...primary, enabled: true, priority: "primary" as const }];
-  const withByproducts = PRODUCT_CATALOG
-    .filter((product) => product.id === primaryId || (product.nominalThickness <= 30 && product.nominalWidth <= 120))
-    .map((product) => ({ ...product, enabled: true, priority: product.id === primaryId ? "primary" as const : "byproduct" as const }));
+  const withByproducts = [
+    primary,
+    ...PRODUCT_CATALOG
+      .filter((product) => product.nominalThickness <= 30 && product.nominalWidth <= 120)
+      .map((product) => ({ ...product, enabled: true, priority: "byproduct" as const })),
+  ];
   const plain = calculate({ diameter: 140, length: 1000, edgeAllowance: 3, products: onlyPrimary, equipment: MILL_LINE, topN: 1 });
   const filled = calculate({ diameter: 140, length: 1000, edgeAllowance: 3, products: withByproducts, equipment: MILL_LINE, topN: 1 });
   assert.equal(plain.status, "ok");
