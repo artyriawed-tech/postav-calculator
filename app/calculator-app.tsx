@@ -892,7 +892,7 @@ export function CalculatorApp() {
                       <div className="catalog-grid">
                         {PRODUCT_CATALOG.filter((product) => !products.some((item) => item.id === product.id && item.priority === "primary")).map((product) => (
                           <button key={product.id} onClick={() => selectPrimaryProduct(product.id)}>
-                            {product.nominalThickness} × {product.nominalWidth}
+                            {product.name}
                           </button>
                         ))}
                       </div>

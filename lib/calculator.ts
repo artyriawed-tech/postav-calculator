@@ -604,14 +604,14 @@ const assortment = [
   [25, 50], [25, 100], [25, 120], [25, 150],
   [30, 100], [30, 150],
   [40, 100], [40, 150],
-  [50, 100], [50, 150], [50, 200],
+  [50, 50], [50, 100], [50, 150], [50, 200],
   [100, 100], [100, 150], [100, 200],
   [150, 150], [150, 200],
 ] as const;
 
 export const PRODUCT_CATALOG: Product[] = assortment.map(([thickness, width], index) => ({
   id: `catalog-${thickness}x${width}`,
-  name: `${thickness} × ${width} мм`,
+  name: thickness === 50 && width === 50 ? "Брусок 50 × 50 мм" : `${thickness} × ${width} мм`,
   nominalThickness: thickness,
   nominalWidth: width,
   cuttingThickness: thickness,
