@@ -29,8 +29,41 @@ test("доска 25×120 входит в рабочий ассортимент",
   assert.equal(product.cuttingWidth, 120);
 });
 
-test("доска 30×120 исключена из рабочего ассортимента", () => {
-  assert.equal(PRODUCT_CATALOG.some((item) => item.id === "catalog-30x120"), false);
+test("размер 30×120 входит в рабочий ассортимент", () => {
+  const product = PRODUCT_CATALOG.find((item) => item.id === "catalog-30x120");
+  assert.ok(product);
+  assert.equal(product.name, "30 × 120 мм");
+  assert.equal(product.nominalThickness, 30);
+  assert.equal(product.nominalWidth, 120);
+  assert.equal(product.cuttingThickness, 30);
+  assert.equal(product.cuttingWidth, 120);
+});
+
+test("каталог размеров отсортирован по толщине и ширине, 50×50 без названия материала", () => {
+  const dimensions = PRODUCT_CATALOG.map((product) => [product.nominalThickness, product.nominalWidth]);
+  assert.deepEqual(dimensions, [...dimensions].sort((left, right) => left[0] - right[0] || left[1] - right[1]));
+  assert.equal(PRODUCT_CATALOG.find((item) => item.id === "catalog-50x50")?.name, "50 × 50 мм");
+});
+
+test("30×120 и 50×50 рассчитываются как отдельные заказы без ошибок геометрии", () => {
+  for (const id of ["catalog-30x120", "catalog-50x50"]) {
+    const product = PRODUCT_CATALOG.find((item) => item.id === id)!;
+    const result = calculate({
+      diameter: 140,
+      length: 4000,
+      products: [{ ...product, enabled: true, priority: "primary" }],
+      equipment: MILL_LINE,
+      topN: 1,
+    });
+    assert.equal(result.status, "ok", product.name);
+    const variant = result.variants[0];
+    const count = variant.counts[product.id] || 0;
+    assert.ok(count > 0, product.name);
+    assert.ok(Math.abs(variant.nominalVolume - count * product.nominalThickness * product.nominalWidth * 4000 / 1e9) < 1e-12, product.name);
+    const audit = auditVariantGeometry(140, variant, [], 3);
+    assert.equal(audit.passed, true, product.name);
+    assert.ok(audit.minEdgeClearance >= 3 - 1e-7, product.name);
+  }
 });
 
 test("папин пример Ø140 × 4 м даёт 47,1% по ГОСТ, а не 55,9% от идеального цилиндра", () => {
